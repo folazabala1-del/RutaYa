@@ -1,0 +1,10 @@
+{
+  "name": "RutaYa Trujillo",
+  "short_name": "RutaYa",
+  "description": "Saber tu ruta, te lleva más lejos",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0F1B3D",
+  "theme_color": "#0F1B3D",
+  "icons": []
+}

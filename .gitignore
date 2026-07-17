@@ -1,0 +1,18 @@
+# Dependencias
+node_modules/
+backend/node_modules/
+
+# Builds
+dist/
+backend/public/
+
+# Datos locales (SQLite) — nunca deben subirse al repo
+backend/data/
+
+# Entorno
+.env
+backend/.env
+
+# Editor / OS
+.DS_Store
+*.log

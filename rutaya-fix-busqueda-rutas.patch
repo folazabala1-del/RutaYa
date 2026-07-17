@@ -1,0 +1,724 @@
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..ad1feb7
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,18 @@
++# Dependencias
++node_modules/
++backend/node_modules/
++
++# Builds
++dist/
++backend/public/
++
++# Datos locales (SQLite) — nunca deben subirse al repo
++backend/data/
++
++# Entorno
++.env
++backend/.env
++
++# Editor / OS
++.DS_Store
++*.log
+diff --git a/src/context/AppContext.jsx b/src/context/AppContext.jsx
+index 5d8af48..6208a2c 100644
+--- a/src/context/AppContext.jsx
++++ b/src/context/AppContext.jsx
+@@ -10,6 +10,7 @@ export function AppProvider({ children }) {
+   const [token, setToken] = useState(null);
+   const [authLoading, setAuthLoading] = useState(false);
+   const [locationEnabled, setLocationEnabled] = useState(false);
++  const [userPos, setUserPos] = useState(null); // [lat, lng] real, o null si no se pudo obtener
+   const [destino, setDestino] = useState(null);
+   const [selectedRoute, setSelectedRoute] = useState(null);
+   const [savedRoutesList, setSavedRoutesList] = useState(initialRoutes);
+@@ -87,6 +88,7 @@ export function AppProvider({ children }) {
+       value={{
+         user, token, authLoading, login, register, logout,
+         locationEnabled, setLocationEnabled,
++        userPos, setUserPos,
+         destino, setDestino,
+         selectedRoute, setSelectedRoute,
+         savedRoutesList, removeSavedRoute,
+diff --git a/src/data/mock.js b/src/data/mock.js
+index 1cab7c6..48e0b6f 100644
+--- a/src/data/mock.js
++++ b/src/data/mock.js
+@@ -1,32 +1,151 @@
+ // Centro de Trujillo (Plaza de Armas) como referencia
+ export const TRUJILLO_CENTER = [-8.1116, -79.0288];
+ 
++// Bounding box aproximado del área metropolitana de Trujillo (lon1,lat1,lon2,lat2),
++// usado para restringir la búsqueda por geocodificación a la ciudad.
++export const TRUJILLO_VIEWBOX = '-79.22,-8.02,-78.94,-8.24';
++
+ export const savedPlaces = [
+   { id: 'casa', label: 'Casa', address: 'Calle Los Pinos 123', icon: 'home', coords: [-8.1050, -79.0400] },
+   { id: 'trabajo', label: 'Trabajo', address: 'Centro Histórico', icon: 'briefcase', coords: [-8.1116, -79.0288] },
+-  { id: 'universidad', label: 'Universidad Nacional', address: 'Av. Juan Pablo II, Trujillo', icon: 'cap', coords: [-8.0950, -79.0450] },
+-  { id: 'mall', label: 'Mall', address: 'Mall Plaza Trujillo', icon: 'bag', coords: [-8.1250, -79.0150] },
++  { id: 'universidad', label: 'Universidad Nacional de Trujillo', address: 'Av. Juan Pablo II, Trujillo', icon: 'cap', coords: [-8.0961, -79.0392] },
++  { id: 'mall', label: 'Mallplaza Trujillo', address: 'Av. América Oeste, Trujillo', icon: 'bag', coords: [-8.1260, -79.0400] },
+ ];
+ 
+ export const recentPlaces = [
+   { id: 'r1', label: 'Plaza de Armas de Trujillo', address: 'Cercado de Trujillo, Trujillo 13001', coords: TRUJILLO_CENTER },
+-  { id: 'r2', label: 'Universidad Privada Antenor Orrego', address: 'Av. América Sur 3145', coords: [-8.1180, -79.0330] },
+-  { id: 'r3', label: 'Mallplaza Trujillo', address: 'Av. América Oeste', coords: [-8.1260, -79.0400] },
++  { id: 'r2', label: 'Universidad Privada Antenor Orrego', address: 'Av. América Sur 3145, Trujillo', coords: [-8.1180, -79.0330] },
++  { id: 'r3', label: 'Mallplaza Trujillo', address: 'Av. América Oeste, Trujillo', coords: [-8.1260, -79.0400] },
++];
++
++// Lugares frecuentes de Trujillo con coordenadas de referencia (aproximadas), para que la
++// búsqueda encuentre resultados al instante sin depender de la red. Si el usuario escribe
++// algo que no está aquí, se completa con geocodificación real (ver src/lib/geocode.js).
++export const trujilloPlaces = [
++  { id: 'plaza-armas', label: 'Plaza de Armas de Trujillo', address: 'Cercado de Trujillo', coords: TRUJILLO_CENTER },
++  { id: 'upao', label: 'Universidad Privada Antenor Orrego (UPAO)', address: 'Av. América Sur 3145, Trujillo', coords: [-8.1180, -79.0330] },
++  { id: 'unt', label: 'Universidad Nacional de Trujillo (UNT)', address: 'Av. Juan Pablo II, Trujillo', coords: [-8.0961, -79.0392] },
++  { id: 'ucv', label: 'Universidad César Vallejo (UCV)', address: 'Av. Larco 1770, Trujillo', coords: [-8.1231, -79.0328] },
++  { id: 'mallplaza', label: 'Mallplaza Trujillo', address: 'Av. América Oeste, Trujillo', coords: [-8.1260, -79.0400] },
++  { id: 'real-plaza', label: 'Real Plaza Trujillo', address: 'Av. Juan Pablo II 132, Trujillo', coords: [-8.1187, -79.0233] },
++  { id: 'terminal', label: 'Terminal Terrestre', address: 'Av. Túpac Amaru, Trujillo', coords: [-8.1050, -79.0180] },
++  { id: 'huanchaco', label: 'Huanchaco', address: 'Balneario de Huanchaco, La Libertad', coords: [-8.0817, -79.1181] },
++  { id: 'el-porvenir', label: 'El Porvenir', address: 'Distrito El Porvenir, Trujillo', coords: [-8.0972, -79.0083] },
++  { id: 'la-esperanza', label: 'La Esperanza', address: 'Distrito La Esperanza, Trujillo', coords: [-8.0700, -79.0400] },
++  { id: 'victor-larco', label: 'Víctor Larco Herrera', address: 'Distrito Víctor Larco, Trujillo', coords: [-8.1372, -79.0345] },
++  { id: 'buenos-aires', label: 'Buenos Aires (playa)', address: 'Malecón Buenos Aires, Víctor Larco', coords: [-8.1550, -79.0500] },
++  { id: 'florencia-mora', label: 'Florencia de Mora', address: 'Distrito Florencia de Mora, Trujillo', coords: [-8.0908, -79.0119] },
++  { id: 'moche', label: 'Moche', address: 'Distrito Moche, Trujillo', coords: [-8.1900, -78.9950] },
++  { id: 'salaverry', label: 'Salaverry', address: 'Distrito Salaverry, La Libertad', coords: [-8.2264, -78.9756] },
++  { id: 'hospital-belen', label: 'Hospital Belén de Trujillo', address: 'Bolívar 350, Trujillo', coords: [-8.1130, -79.0270] },
++  { id: 'hospital-regional', label: 'Hospital Regional Docente de Trujillo', address: 'Av. Mansiche 795, Trujillo', coords: [-8.1030, -79.0370] },
++  { id: 'mercado-mayorista', label: 'Mercado Mayorista', address: 'Av. Túpac Amaru, Trujillo', coords: [-8.1010, -79.0170] },
+ ];
+ 
++// Rutas de transporte urbano con nombres de empresas reales que operan en Trujillo
++// (fuente: registros públicos de transporte urbano de la ciudad). Los trazos (path) son
++// aproximados para fines de visualización del prototipo — no son el trazo oficial exacto,
++// pero sí conectan el centro con el distrito/destino real de cada empresa.
+ export const routes = [
+   {
+-    id: 'h',
++    id: 'huanchaco',
+     code: 'H',
+-    name: "Micro 'Huanchaco' - H",
+-    hacia: 'Universidad Privada Antenor Orrego',
+-    time: 25,
+-    cost: 1.00,
+-    walk: 4.1,
+-    paradero: 'Av. América Sur 3145',
++    company: 'Empresa de Transporte Huanchaco S.A. (ETHSA)',
++    name: "Combi 'Huanchaco'",
++    hacia: 'Huanchaco',
++    destinations: ['huanchaco', 'balneario de huanchaco', 'malecón huanchaco', 'av. húsares de junín'],
++    time: 35,
++    cost: 2.0,
++    walk: 3.2,
++    paradero: 'Av. Húsares de Junín cdra. 5',
++    color: '#EE9315',
++    live: true,
++    endpoint: [-8.0817, -79.1181],
++    path: [
++      [-8.1116, -79.0288],
++      [-8.1050, -79.0450],
++      [-8.0980, -79.0700],
++      [-8.0900, -79.0950],
++      [-8.0817, -79.1181],
++    ],
++  },
++  {
++    id: 'california',
++    code: 'C',
++    company: 'Empresa de Transporte California S.A. (E.T.C.S.A.)',
++    name: "Micro 'California'",
++    hacia: 'El Porvenir',
++    destinations: ['el porvenir', 'av. cahuide', 'mercado el porvenir'],
++    time: 20,
++    cost: 1.5,
++    walk: 2.0,
++    paradero: 'Av. Cahuide cdra. 3',
++    color: '#0F1B3D',
++    live: false,
++    endpoint: [-8.0972, -79.0083],
++    path: [
++      [-8.1116, -79.0288],
++      [-8.1060, -79.0220],
++      [-8.1010, -79.0150],
++      [-8.0972, -79.0083],
++    ],
++  },
++  {
++    id: 'nuevos-girasoles',
++    code: 'NG',
++    company: 'Empresa de Transporte Nuevos Girasoles S.A.',
++    name: "Micro 'Nuevos Girasoles'",
++    hacia: 'La Esperanza',
++    destinations: ['la esperanza', 'av. miguel grau', 'hospital regional'],
++    time: 22,
++    cost: 1.5,
++    walk: 2.6,
++    paradero: 'Av. Miguel Grau cdra. 10',
++    color: '#64748B',
++    live: true,
++    endpoint: [-8.0700, -79.0400],
++    path: [
++      [-8.1116, -79.0288],
++      [-8.1000, -79.0330],
++      [-8.0850, -79.0370],
++      [-8.0700, -79.0400],
++    ],
++  },
++  {
++    id: 'libertad',
++    code: 'L',
++    company: 'Empresa de Transporte y Servicios Libertad S.A.',
++    name: "Micro 'Libertad'",
++    hacia: 'Víctor Larco - Buenos Aires',
++    destinations: ['victor larco', 'víctor larco', 'buenos aires', 'malecón buenos aires'],
++    time: 28,
++    cost: 2.0,
++    walk: 3.0,
++    paradero: 'Av. Larco cdra. 8',
+     color: '#EE9315',
++    live: false,
++    endpoint: [-8.1550, -79.0500],
++    path: [
++      [-8.1116, -79.0288],
++      [-8.1250, -79.0350],
++      [-8.1400, -79.0430],
++      [-8.1550, -79.0500],
++    ],
++  },
++  {
++    id: 'el-aguila',
++    code: 'AG',
++    company: 'Empresa de Transporte y Servicios Múltiples El Águila S.A.',
++    name: "Micro 'El Águila'",
++    hacia: 'UPAO - Av. América Sur',
++    destinations: ['upao', 'universidad privada antenor orrego', 'av. américa sur', 'av. america sur'],
++    time: 15,
++    cost: 1.5,
++    walk: 1.5,
++    paradero: 'Av. América Sur cdra. 31',
++    color: '#0F1B3D',
+     live: true,
+-    fastest: true,
++    endpoint: [-8.1180, -79.0330],
+     path: [
+       [-8.1116, -79.0288],
+       [-8.1140, -79.0310],
+@@ -35,40 +154,45 @@ export const routes = [
+     ],
+   },
+   {
+-    id: 'c2',
+-    code: 'C2',
+-    name: "Micro 'Libertad' - C2",
+-    hacia: 'Universidad Privada Antenor Orrego',
+-    time: 25,
+-    cost: 1.30,
+-    walk: 4.1,
+-    paradero: 'Av. América Sur 3145',
++    id: 'miramar',
++    code: 'MR',
++    company: 'Empresa de Transporte Miramar S.A.',
++    name: "Micro 'Miramar'",
++    hacia: 'Mallplaza - Av. América Oeste',
++    destinations: ['mall', 'mallplaza', 'real plaza', 'av. américa oeste', 'av america oeste'],
++    time: 18,
++    cost: 1.5,
++    walk: 2.1,
++    paradero: 'Av. América Oeste cdra. 5',
+     color: '#64748B',
+     live: false,
+-    fastest: false,
++    endpoint: [-8.1260, -79.0400],
+     path: [
+       [-8.1116, -79.0288],
+-      [-8.1130, -79.0350],
+-      [-8.1160, -79.0360],
+-      [-8.1180, -79.0330],
++      [-8.1170, -79.0340],
++      [-8.1220, -79.0380],
++      [-8.1260, -79.0400],
+     ],
+   },
+   {
+-    id: 'ni',
+-    code: 'M-14',
+-    name: "Micro 'El Ícaro'",
+-    hacia: 'Vía Av. Los Incas - Chicago',
+-    time: 18,
+-    cost: 1.00,
+-    walk: 2.3,
+-    paradero: 'Jr. Pizarro 450',
+-    color: '#0F1B3D',
++    id: 'salaverry-express',
++    code: 'SE',
++    company: 'Empresa de Transporte Salaverry Express S.A.',
++    name: "Micro 'Salaverry Express'",
++    hacia: 'Moche - Salaverry',
++    destinations: ['moche', 'salaverry', 'huaca del sol', 'complejo arqueológico moche'],
++    time: 30,
++    cost: 2.5,
++    walk: 2.8,
++    paradero: 'Terminal Terrestre - Av. Túpac Amaru',
++    color: '#EE9315',
+     live: true,
+-    fastest: false,
++    endpoint: [-8.19, -78.995],
+     path: [
+       [-8.1116, -79.0288],
+-      [-8.1080, -79.0250],
+-      [-8.1040, -79.0220],
++      [-8.135, -79.018],
++      [-8.165, -79.006],
++      [-8.19, -78.995],
+     ],
+   },
+ ];
+diff --git a/src/lib/geo.js b/src/lib/geo.js
+new file mode 100644
+index 0000000..9a85417
+--- /dev/null
++++ b/src/lib/geo.js
+@@ -0,0 +1,40 @@
++// Distancia en línea recta (km) entre dos puntos [lat, lng], usando la fórmula de Haversine.
++export function haversineKm([lat1, lon1], [lat2, lon2]) {
++  const R = 6371;
++  const dLat = ((lat2 - lat1) * Math.PI) / 180;
++  const dLon = ((lon2 - lon1) * Math.PI) / 180;
++  const a =
++    Math.sin(dLat / 2) ** 2 +
++    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
++  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
++  return R * c;
++}
++
++// Dado un destino [lat, lng] y la lista de rutas (con .endpoint y .destinations),
++// devuelve las rutas ordenadas de más a menos relevantes para llegar a ese destino.
++// Prioriza coincidencia de texto (p.ej. el usuario buscó "Huanchaco" y la ruta va a Huanchaco)
++// y usa la distancia al punto final de la ruta como criterio de desempate/orden general.
++export function rankRoutesForDestination(routes, destino) {
++  if (!destino?.coords) return routes;
++
++  const query = (destino.label || '').toLowerCase();
++
++  const scored = routes.map((route) => {
++    const distKm = haversineKm(destino.coords, route.endpoint || route.path[route.path.length - 1]);
++    const textMatch = (route.destinations || []).some(
++      (d) => query.includes(d) || d.includes(query)
++    );
++    return { route, distKm, textMatch };
++  });
++
++  scored.sort((a, b) => {
++    if (a.textMatch !== b.textMatch) return a.textMatch ? -1 : 1;
++    return a.distKm - b.distKm;
++  });
++
++  return scored.map(({ route, distKm }, i) => ({
++    ...route,
++    fastest: i === 0,
++    distKm: Math.round(distKm * 10) / 10,
++  }));
++}
+diff --git a/src/lib/geocode.js b/src/lib/geocode.js
+new file mode 100644
+index 0000000..a0131d4
+--- /dev/null
++++ b/src/lib/geocode.js
+@@ -0,0 +1,37 @@
++import { TRUJILLO_VIEWBOX } from '../data/mock';
++
++// Busca una dirección o lugar real usando Nominatim (OpenStreetMap), acotado a Trujillo.
++// Es un servicio público gratuito — por su política de uso no se debe golpear en cada
++// tecla, por eso en Buscar.jsx esta función se llama con debounce (ver useEffect ahí).
++export async function geocodeTrujillo(query) {
++  const q = (query || '').trim();
++  if (q.length < 3) return [];
++
++  const params = new URLSearchParams({
++    format: 'jsonv2',
++    q: `${q}, Trujillo, La Libertad, Perú`,
++    viewbox: TRUJILLO_VIEWBOX,
++    bounded: '1',
++    countrycodes: 'pe',
++    limit: '5',
++  });
++
++  try {
++    const res = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
++      headers: { 'Accept-Language': 'es' },
++    });
++    if (!res.ok) return [];
++    const data = await res.json();
++
++    return data.map((item) => ({
++      id: `geo-${item.place_id}`,
++      label: (item.name && item.name.trim()) || item.display_name.split(',')[0],
++      address: item.display_name,
++      coords: [parseFloat(item.lat), parseFloat(item.lon)],
++    }));
++  } catch {
++    // Sin internet o el servicio no respondió: el buscador sigue funcionando
++    // con los lugares locales (trujilloPlaces / guardados / recientes).
++    return [];
++  }
++}
+diff --git a/src/pages/Buscar.jsx b/src/pages/Buscar.jsx
+index 252ab76..42e022e 100644
+--- a/src/pages/Buscar.jsx
++++ b/src/pages/Buscar.jsx
+@@ -1,13 +1,16 @@
+-import { useState } from 'react';
++import { useEffect, useState } from 'react';
+ import { useNavigate } from 'react-router-dom';
+ import TopBar from '../components/TopBar';
+-import { savedPlaces, recentPlaces } from '../data/mock';
++import { savedPlaces, recentPlaces, trujilloPlaces } from '../data/mock';
++import { geocodeTrujillo } from '../lib/geocode';
+ import { useApp } from '../context/AppContext';
+ 
+ const iconMap = { home: '🏠', briefcase: '💼', cap: '🎓', bag: '🛍️' };
+ 
+ export default function Buscar() {
+   const [query, setQuery] = useState('');
++  const [geoResults, setGeoResults] = useState([]);
++  const [loadingGeo, setLoadingGeo] = useState(false);
+   const navigate = useNavigate();
+   const { setDestino } = useApp();
+ 
+@@ -16,9 +19,38 @@ export default function Buscar() {
+     navigate('/rutas');
+   }
+ 
+-  const filteredRecents = recentPlaces.filter((p) =>
+-    p.label.toLowerCase().includes(query.toLowerCase())
+-  );
++  const q = query.trim().toLowerCase();
++
++  // Coincidencias locales (lugares guardados, recientes y frecuentes de Trujillo) —
++  // aparecen al instante mientras el usuario escribe, sin depender de la red.
++  const localMatches =
++    q.length === 0
++      ? []
++      : [...savedPlaces, ...recentPlaces, ...trujilloPlaces]
++          .filter((p) => p.label.toLowerCase().includes(q) || p.address.toLowerCase().includes(q))
++          .filter((p, i, arr) => arr.findIndex((x) => x.label === p.label) === i)
++          .slice(0, 6);
++
++  // Búsqueda real (geocodificación) con debounce: si lo que escribió el usuario no
++  // aparece en la lista local, buscamos la dirección real en Trujillo vía OpenStreetMap.
++  useEffect(() => {
++    if (q.length < 3) {
++      setGeoResults([]);
++      return;
++    }
++    setLoadingGeo(true);
++    const timer = setTimeout(async () => {
++      const results = await geocodeTrujillo(q);
++      setGeoResults(results);
++      setLoadingGeo(false);
++    }, 500);
++    return () => clearTimeout(timer);
++  }, [q]);
++
++  const showResults = q.length > 0;
++  const noResults = showResults && !loadingGeo && localMatches.length === 0 && geoResults.length === 0;
++
++  const filteredRecents = recentPlaces.filter((p) => p.label.toLowerCase().includes(q));
+ 
+   return (
+     <div className="screen bg-slate-50">
+@@ -44,54 +76,74 @@ export default function Buscar() {
+           <input
+             value={query}
+             onChange={(e) => setQuery(e.target.value)}
+-            placeholder="¿Hacia dónde te diriges?"
++            placeholder="¿Hacia dónde te diriges? (ej. Huanchaco, El Porvenir...)"
+             className="flex-1 text-sm font-semibold text-navy-900 outline-none placeholder:text-slate-400 placeholder:font-normal"
++            autoFocus
+           />
+-          <button className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 shrink-0">⇅</button>
++          {loadingGeo && <span className="w-4 h-4 border-2 border-slate-200 border-t-amber-500 rounded-full animate-spin shrink-0" />}
+         </div>
+       </div>
+ 
+-      <button
+-        onClick={() => pick(filteredRecents[0] || recentPlaces[0])}
+-        className="mx-4 mt-4 bg-navy-900 text-white font-display font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
+-      >
+-        🔍 Buscar rutas
+-      </button>
+-
+-      <h3 className="px-4 mt-6 mb-2 font-display font-bold text-navy-900">Lugares guardados</h3>
+-      <div className="px-4 grid grid-cols-2 gap-3">
+-        {savedPlaces.slice(0, 2).map((p) => (
+-          <button key={p.id} onClick={() => pick(p)} className="bg-white rounded-2xl shadow-card p-4 flex flex-col items-center gap-2">
+-            <div className="w-10 h-10 rounded-full bg-navy-900 text-white flex items-center justify-center text-lg">{iconMap[p.icon]}</div>
+-            <span className="text-sm font-semibold text-navy-900">{p.label}</span>
+-          </button>
+-        ))}
+-      </div>
+-
+-      {savedPlaces.slice(2).map((p) => (
+-        <button key={p.id} onClick={() => pick(p)} className="mx-4 mt-3 bg-white rounded-2xl shadow-card p-3.5 flex items-center gap-3 text-left">
+-          <div className="w-9 h-9 rounded-full bg-amber-100 text-amber-500 flex items-center justify-center">{iconMap[p.icon]}</div>
+-          <div className="flex-1">
+-            <p className="text-sm font-semibold text-navy-900">{p.label}</p>
+-            <p className="text-xs text-slate-400">{p.address}</p>
++      {showResults ? (
++        <div className="px-4 mt-4">
++          <h3 className="mb-2 font-display font-bold text-navy-900">Resultados</h3>
++          {[...localMatches, ...geoResults]
++            .filter((p, i, arr) => arr.findIndex((x) => x.label === p.label) === i)
++            .map((p) => (
++              <button
++                key={p.id}
++                onClick={() => pick(p)}
++                className="w-full mt-2 bg-white rounded-2xl shadow-card p-3.5 flex items-center gap-3 text-left"
++              >
++                <span className="text-amber-500 shrink-0">📍</span>
++                <div className="flex-1 min-w-0">
++                  <p className="text-sm font-semibold text-navy-900 truncate">{p.label}</p>
++                  <p className="text-xs text-slate-400 truncate">{p.address}</p>
++                </div>
++                <span className="text-slate-300">›</span>
++              </button>
++            ))}
++          {noResults && (
++            <p className="text-sm text-slate-400 text-center mt-6">
++              No encontramos "{query}" en Trujillo. Prueba con el nombre de una calle, distrito o lugar conocido.
++            </p>
++          )}
++        </div>
++      ) : (
++        <>
++          <h3 className="px-4 mt-6 mb-2 font-display font-bold text-navy-900">Lugares guardados</h3>
++          <div className="px-4 grid grid-cols-2 gap-3">
++            {savedPlaces.slice(0, 2).map((p) => (
++              <button key={p.id} onClick={() => pick(p)} className="bg-white rounded-2xl shadow-card p-4 flex flex-col items-center gap-2">
++                <div className="w-10 h-10 rounded-full bg-navy-900 text-white flex items-center justify-center text-lg">{iconMap[p.icon]}</div>
++                <span className="text-sm font-semibold text-navy-900">{p.label}</span>
++              </button>
++            ))}
+           </div>
+-        </button>
+-      ))}
+ 
+-      <div className="flex items-center justify-between px-4 mt-6 mb-2">
+-        <h3 className="font-display font-bold text-navy-900">Lugares recientes</h3>
+-        <button onClick={() => setQuery('')} className="text-xs font-bold text-amber-500">LIMPIAR</button>
+-      </div>
+-      {filteredRecents.map((p) => (
+-        <button key={p.id} onClick={() => pick(p)} className="mx-4 mt-2 bg-white rounded-2xl shadow-card p-3.5 flex items-center gap-3 text-left">
+-          <span className="text-slate-400">🕐</span>
+-          <div className="flex-1">
+-            <p className="text-sm font-semibold text-navy-900">{p.label}</p>
+-            <p className="text-xs text-slate-400">{p.address}</p>
+-          </div>
+-          <span className="text-slate-300">›</span>
+-        </button>
+-      ))}
++          {savedPlaces.slice(2).map((p) => (
++            <button key={p.id} onClick={() => pick(p)} className="mx-4 mt-3 bg-white rounded-2xl shadow-card p-3.5 flex items-center gap-3 text-left">
++              <div className="w-9 h-9 rounded-full bg-amber-100 text-amber-500 flex items-center justify-center">{iconMap[p.icon]}</div>
++              <div className="flex-1">
++                <p className="text-sm font-semibold text-navy-900">{p.label}</p>
++                <p className="text-xs text-slate-400">{p.address}</p>
++              </div>
++            </button>
++          ))}
++
++          <h3 className="px-4 mt-6 mb-2 font-display font-bold text-navy-900">Lugares recientes</h3>
++          {filteredRecents.map((p) => (
++            <button key={p.id} onClick={() => pick(p)} className="mx-4 mt-2 bg-white rounded-2xl shadow-card p-3.5 flex items-center gap-3 text-left">
++              <span className="text-slate-400">🕐</span>
++              <div className="flex-1">
++                <p className="text-sm font-semibold text-navy-900">{p.label}</p>
++                <p className="text-xs text-slate-400">{p.address}</p>
++              </div>
++              <span className="text-slate-300">›</span>
++            </button>
++          ))}
++        </>
++      )}
+     </div>
+   );
+ }
+diff --git a/src/pages/Explorar.jsx b/src/pages/Explorar.jsx
+index c4bd1de..9222d5a 100644
+--- a/src/pages/Explorar.jsx
++++ b/src/pages/Explorar.jsx
+@@ -2,9 +2,12 @@ import { useNavigate } from 'react-router-dom';
+ import AppMap from '../components/AppMap';
+ import BottomNav from '../components/BottomNav';
+ import { TRUJILLO_CENTER } from '../data/mock';
++import { useApp } from '../context/AppContext';
+ 
+ export default function Explorar() {
+   const navigate = useNavigate();
++  const { userPos, destino } = useApp();
++  const center = userPos || TRUJILLO_CENTER;
+ 
+   return (
+     <div className="flex-1 relative">
+@@ -24,7 +27,13 @@ export default function Explorar() {
+       </header>
+ 
+       <div className="absolute inset-0 z-0">
+-        <AppMap center={TRUJILLO_CENTER} zoom={15} userPos={TRUJILLO_CENTER} className="w-full h-full" />
++        <AppMap
++          center={destino?.coords || center}
++          zoom={destino ? 14 : 15}
++          userPos={center}
++          destPos={destino?.coords}
++          className="w-full h-full"
++        />
+       </div>
+ 
+       <button
+diff --git a/src/pages/LocationPermission.jsx b/src/pages/LocationPermission.jsx
+index 556149b..c2b014a 100644
+--- a/src/pages/LocationPermission.jsx
++++ b/src/pages/LocationPermission.jsx
+@@ -4,16 +4,39 @@ import { useApp } from '../context/AppContext';
+ 
+ export default function LocationPermission() {
+   const [step, setStep] = useState(1);
++  const [requesting, setRequesting] = useState(false);
+   const navigate = useNavigate();
+-  const { setLocationEnabled } = useApp();
++  const { setLocationEnabled, setUserPos } = useApp();
+ 
+   function handleAllow() {
+     if (step === 1) {
+       setStep(2);
+       return;
+     }
+-    setLocationEnabled(true);
+-    navigate('/login');
++
++    if (!('geolocation' in navigator)) {
++      setLocationEnabled(true);
++      navigate('/login');
++      return;
++    }
++
++    setRequesting(true);
++    navigator.geolocation.getCurrentPosition(
++      (pos) => {
++        setUserPos([pos.coords.latitude, pos.coords.longitude]);
++        setLocationEnabled(true);
++        setRequesting(false);
++        navigate('/login');
++      },
++      () => {
++        // El usuario negó el permiso o falló el GPS: seguimos igual, el mapa
++        // usará el centro de Trujillo como respaldo.
++        setLocationEnabled(true);
++        setRequesting(false);
++        navigate('/login');
++      },
++      { enableHighAccuracy: true, timeout: 8000 }
++    );
+   }
+ 
+   return (
+@@ -64,9 +87,10 @@ export default function LocationPermission() {
+             </div>
+             <button
+               onClick={handleAllow}
+-              className="mt-5 w-full bg-navy-900 text-white font-display font-bold py-4 rounded-2xl active:scale-[0.98] transition-transform"
++              disabled={requesting}
++              className="mt-5 w-full bg-navy-900 text-white font-display font-bold py-4 rounded-2xl active:scale-[0.98] transition-transform disabled:opacity-60"
+             >
+-              Activar →
++              {requesting ? 'Obteniendo ubicación…' : 'Activar →'}
+             </button>
+             <button onClick={handleAllow} className="w-full border border-slate-200 text-navy-900 font-semibold py-3.5 rounded-2xl mt-2.5">
+               Abrir configuración
+diff --git a/src/pages/MapaEnVivo.jsx b/src/pages/MapaEnVivo.jsx
+index 693cb69..cb4d5d7 100644
+--- a/src/pages/MapaEnVivo.jsx
++++ b/src/pages/MapaEnVivo.jsx
+@@ -17,7 +17,7 @@ function interpolate(path, t) {
+ 
+ export default function MapaEnVivo() {
+   const navigate = useNavigate();
+-  const { selectedRoute } = useApp();
++  const { selectedRoute, destino, userPos } = useApp();
+   const route = selectedRoute || routes[0];
+   const [progress, setProgress] = useState(0.15);
+   const [etaMin, setEtaMin] = useState(10);
+@@ -51,8 +51,10 @@ export default function MapaEnVivo() {
+ 
+       <div className="absolute inset-0 z-0">
+         <AppMap
+-          center={TRUJILLO_CENTER}
+-          zoom={15}
++          center={userPos || TRUJILLO_CENTER}
++          zoom={14}
++          userPos={userPos}
++          destPos={destino?.coords}
+           routePath={route.path}
+           routeColor={route.color}
+           busPos={busPos}
+diff --git a/src/pages/Rutas.jsx b/src/pages/Rutas.jsx
+index 37b35c8..973c69b 100644
+--- a/src/pages/Rutas.jsx
++++ b/src/pages/Rutas.jsx
+@@ -1,13 +1,28 @@
++import { useMemo } from 'react';
+ import { useNavigate } from 'react-router-dom';
+ import TopBar from '../components/TopBar';
+ import BottomNav from '../components/BottomNav';
+-import { routes } from '../data/mock';
++import { routes as allRoutes } from '../data/mock';
++import { rankRoutesForDestination } from '../lib/geo';
+ import { useApp } from '../context/AppContext';
+ 
+ export default function Rutas() {
+   const navigate = useNavigate();
+   const { destino, setSelectedRoute } = useApp();
+ 
++  // Si hay un destino real (buscado por el usuario), ordenamos las rutas por cuál
++  // llega más cerca de ese destino (por nombre de distrito/lugar y por distancia).
++  // Además, "estiramos" el último tramo del recorrido hasta el destino real, para
++  // que el mapa muestre la ruta llegando al lugar que el usuario buscó.
++  const routes = useMemo(() => {
++    if (!destino?.coords) return allRoutes;
++    const ranked = rankRoutesForDestination(allRoutes, destino);
++    return ranked.slice(0, 3).map((r) => ({
++      ...r,
++      path: [...r.path.slice(0, -1), destino.coords],
++    }));
++  }, [destino]);
++
+   function verMapa(route) {
+     setSelectedRoute(route);
+     navigate('/mapa-en-vivo');
+@@ -47,6 +62,7 @@ export default function Rutas() {
+                 <div>
+                   <p className="font-display font-bold text-navy-900 leading-tight">{r.name}</p>
+                   <p className="text-xs text-slate-400 mt-0.5">Hacia: {r.hacia}</p>
++                  {r.company && <p className="text-[10px] text-slate-300 mt-0.5">{r.company}</p>}
+                 </div>
+               </div>
+               <div className="text-right shrink-0">
+@@ -55,9 +71,10 @@ export default function Rutas() {
+               </div>
+             </div>
+ 
+-            <div className="flex items-center gap-3 text-xs text-slate-400 mt-3">
++            <div className="flex items-center gap-3 text-xs text-slate-400 mt-3 flex-wrap">
+               <span>🚶 {r.walk} km</span>
+               <span>📍 Paradero: {r.paradero}</span>
++              {typeof r.distKm === 'number' && <span>🎯 {r.distKm} km del destino</span>}
+             </div>
+ 
+             <div className="flex gap-2 mt-3">

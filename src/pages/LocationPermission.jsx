@@ -4,16 +4,39 @@ import { useApp } from '../context/AppContext';
 
 export default function LocationPermission() {
   const [step, setStep] = useState(1);
+  const [requesting, setRequesting] = useState(false);
   const navigate = useNavigate();
-  const { setLocationEnabled } = useApp();
+  const { setLocationEnabled, setUserPos } = useApp();
 
   function handleAllow() {
     if (step === 1) {
       setStep(2);
       return;
     }
-    setLocationEnabled(true);
-    navigate('/login');
+
+    if (!('geolocation' in navigator)) {
+      setLocationEnabled(true);
+      navigate('/login');
+      return;
+    }
+
+    setRequesting(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setUserPos([pos.coords.latitude, pos.coords.longitude]);
+        setLocationEnabled(true);
+        setRequesting(false);
+        navigate('/login');
+      },
+      () => {
+        // El usuario negó el permiso o falló el GPS: seguimos igual, el mapa
+        // usará el centro de Trujillo como respaldo.
+        setLocationEnabled(true);
+        setRequesting(false);
+        navigate('/login');
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
   }
 
   return (
@@ -64,9 +87,10 @@ export default function LocationPermission() {
             </div>
             <button
               onClick={handleAllow}
-              className="mt-5 w-full bg-navy-900 text-white font-display font-bold py-4 rounded-2xl active:scale-[0.98] transition-transform"
+              disabled={requesting}
+              className="mt-5 w-full bg-navy-900 text-white font-display font-bold py-4 rounded-2xl active:scale-[0.98] transition-transform disabled:opacity-60"
             >
-              Activar →
+              {requesting ? 'Obteniendo ubicación…' : 'Activar →'}
             </button>
             <button onClick={handleAllow} className="w-full border border-slate-200 text-navy-900 font-semibold py-3.5 rounded-2xl mt-2.5">
               Abrir configuración

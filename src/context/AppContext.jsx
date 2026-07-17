@@ -10,6 +10,7 @@ export function AppProvider({ children }) {
   const [token, setToken] = useState(null);
   const [authLoading, setAuthLoading] = useState(false);
   const [locationEnabled, setLocationEnabled] = useState(false);
+  const [userPos, setUserPos] = useState(null); // [lat, lng] real, o null si no se pudo obtener
   const [destino, setDestino] = useState(null);
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [savedRoutesList, setSavedRoutesList] = useState(initialRoutes);
@@ -87,6 +88,7 @@ export function AppProvider({ children }) {
       value={{
         user, token, authLoading, login, register, logout,
         locationEnabled, setLocationEnabled,
+        userPos, setUserPos,
         destino, setDestino,
         selectedRoute, setSelectedRoute,
         savedRoutesList, removeSavedRoute,

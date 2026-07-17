@@ -17,7 +17,7 @@ function interpolate(path, t) {
 
 export default function MapaEnVivo() {
   const navigate = useNavigate();
-  const { selectedRoute } = useApp();
+  const { selectedRoute, destino, userPos } = useApp();
   const route = selectedRoute || routes[0];
   const [progress, setProgress] = useState(0.15);
   const [etaMin, setEtaMin] = useState(10);
@@ -51,8 +51,10 @@ export default function MapaEnVivo() {
 
       <div className="absolute inset-0 z-0">
         <AppMap
-          center={TRUJILLO_CENTER}
-          zoom={15}
+          center={userPos || TRUJILLO_CENTER}
+          zoom={14}
+          userPos={userPos}
+          destPos={destino?.coords}
           routePath={route.path}
           routeColor={route.color}
           busPos={busPos}

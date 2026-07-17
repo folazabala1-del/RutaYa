@@ -2,9 +2,12 @@ import { useNavigate } from 'react-router-dom';
 import AppMap from '../components/AppMap';
 import BottomNav from '../components/BottomNav';
 import { TRUJILLO_CENTER } from '../data/mock';
+import { useApp } from '../context/AppContext';
 
 export default function Explorar() {
   const navigate = useNavigate();
+  const { userPos, destino } = useApp();
+  const center = userPos || TRUJILLO_CENTER;
 
   return (
     <div className="flex-1 relative">
@@ -24,7 +27,13 @@ export default function Explorar() {
       </header>
 
       <div className="absolute inset-0 z-0">
-        <AppMap center={TRUJILLO_CENTER} zoom={15} userPos={TRUJILLO_CENTER} className="w-full h-full" />
+        <AppMap
+          center={destino?.coords || center}
+          zoom={destino ? 14 : 15}
+          userPos={center}
+          destPos={destino?.coords}
+          className="w-full h-full"
+        />
       </div>
 
       <button

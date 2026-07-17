@@ -1,12 +1,27 @@
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import TopBar from '../components/TopBar';
 import BottomNav from '../components/BottomNav';
-import { routes } from '../data/mock';
+import { routes as allRoutes } from '../data/mock';
+import { rankRoutesForDestination } from '../lib/geo';
 import { useApp } from '../context/AppContext';
 
 export default function Rutas() {
   const navigate = useNavigate();
   const { destino, setSelectedRoute } = useApp();
+
+  // Si hay un destino real (buscado por el usuario), ordenamos las rutas por cuál
+  // llega más cerca de ese destino (por nombre de distrito/lugar y por distancia).
+  // Además, "estiramos" el último tramo del recorrido hasta el destino real, para
+  // que el mapa muestre la ruta llegando al lugar que el usuario buscó.
+  const routes = useMemo(() => {
+    if (!destino?.coords) return allRoutes;
+    const ranked = rankRoutesForDestination(allRoutes, destino);
+    return ranked.slice(0, 3).map((r) => ({
+      ...r,
+      path: [...r.path.slice(0, -1), destino.coords],
+    }));
+  }, [destino]);
 
   function verMapa(route) {
     setSelectedRoute(route);
@@ -47,6 +62,7 @@ export default function Rutas() {
                 <div>
                   <p className="font-display font-bold text-navy-900 leading-tight">{r.name}</p>
                   <p className="text-xs text-slate-400 mt-0.5">Hacia: {r.hacia}</p>
+                  {r.company && <p className="text-[10px] text-slate-300 mt-0.5">{r.company}</p>}
                 </div>
               </div>
               <div className="text-right shrink-0">
@@ -55,9 +71,10 @@ export default function Rutas() {
               </div>
             </div>
 
-            <div className="flex items-center gap-3 text-xs text-slate-400 mt-3">
+            <div className="flex items-center gap-3 text-xs text-slate-400 mt-3 flex-wrap">
               <span>🚶 {r.walk} km</span>
               <span>📍 Paradero: {r.paradero}</span>
+              {typeof r.distKm === 'number' && <span>🎯 {r.distKm} km del destino</span>}
             </div>
 
             <div className="flex gap-2 mt-3">

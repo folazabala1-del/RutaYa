@@ -27,9 +27,22 @@ const pinIcon = L.divIcon({
 
 function Recenter({ center }) {
   const map = useMap();
+
   useEffect(() => {
-    if (center) map.setView(center, map.getZoom(), { animate: true });
-  }, [center]);
+    // Corrige el problema de Leaflet donde el mapa se muestra gris o incompleto
+    // al cargarse en contenedores dinámicos/transiciones de página.
+    const timer = setTimeout(() => {
+      map.invalidateSize();
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [map]);
+
+  useEffect(() => {
+    if (center) {
+      map.setView(center, map.getZoom(), { animate: true });
+    }
+  }, [center, map]);
+
   return null;
 }
 

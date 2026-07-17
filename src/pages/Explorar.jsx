@@ -23,7 +23,7 @@ export default function Explorar() {
         </button>
       </header>
 
-      <div className="absolute inset-0">
+      <div className="absolute inset-0 z-0">
         <AppMap center={TRUJILLO_CENTER} zoom={15} userPos={TRUJILLO_CENTER} className="w-full h-full" />
       </div>
 

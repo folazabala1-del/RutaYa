@@ -49,7 +49,7 @@ export default function MapaEnVivo() {
         </button>
       </header>
 
-      <div className="absolute inset-0">
+      <div className="absolute inset-0 z-0">
         <AppMap
           center={TRUJILLO_CENTER}
           zoom={15}

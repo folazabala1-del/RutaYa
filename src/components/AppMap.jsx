@@ -1,4 +1,4 @@
-import { MapContainer, TileLayer, Marker, Polyline, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Polyline, Tooltip, useMap } from 'react-leaflet';
 import { useEffect } from 'react';
 import L from 'leaflet';
 import { TRUJILLO_CENTER } from '../data/mock';
@@ -20,9 +20,9 @@ const busIcon = (color = '#EE9315', size = 30) =>
 
 const pinIcon = L.divIcon({
   className: '',
-  html: `<div style="width:26px;height:26px;border-radius:50% 50% 50% 0;background:#0F1B3D;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.3)"></div>`,
-  iconSize: [26, 26],
-  iconAnchor: [13, 26],
+  html: `<div style="width:32px;height:32px;border-radius:50% 50% 50% 0;background:#0F1B3D;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;box-shadow:0 3px 8px rgba(0,0,0,0.4);border:2px solid white;"><span style="transform:rotate(45deg);font-size:14px;">🏁</span></div>`,
+  iconSize: [32, 32],
+  iconAnchor: [16, 32],
 });
 
 const stopIcon = (color = '#0F1B3D') =>
@@ -63,6 +63,7 @@ export default function AppMap({
   zoom = 15,
   userPos,
   destPos,
+  destLabel,
   routePath,
   routeColor = '#EE9315',
   busPos,
@@ -106,7 +107,13 @@ export default function AppMap({
       {stopMarkers?.map((s, i) => <Marker key={`stop-${i}`} position={s.pos} icon={stopIcon(s.color || routeColor)} />)}
 
       {userPos && <Marker position={userPos} icon={userIcon} />}
-      {destPos && <Marker position={destPos} icon={pinIcon} />}
+      {destPos && (
+        <Marker position={destPos} icon={pinIcon}>
+          <Tooltip permanent direction="top" offset={[0, -30]} className="font-semibold text-[11px]">
+            {destLabel || 'Destino'}
+          </Tooltip>
+        </Marker>
+      )}
       {busPos && <Marker position={busPos} icon={busIcon(routeColor)} />}
 
       <FitView center={center} bounds={bounds} />

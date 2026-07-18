@@ -2,12 +2,26 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AppMap from '../components/AppMap';
 import BottomNav from '../components/BottomNav';
-import { TRUJILLO_CENTER } from '../data/mock';
+import { TRUJILLO_CENTER, routes as allRoutes, savedPlaces } from '../data/mock';
+import { densifyPath } from '../lib/geo';
 import { useApp } from '../context/AppContext';
+
+function interpolate(path, t) {
+  const segs = path.length - 1;
+  const pos = t * segs;
+  const i = Math.min(Math.floor(pos), segs - 1);
+  const localT = pos - i;
+  const [lat1, lng1] = path[i];
+  const [lat2, lng2] = path[i + 1];
+  return [lat1 + (lat2 - lat1) * localT, lng1 + (lng2 - lng1) * localT];
+}
+
+const trabajo = savedPlaces.find((p) => p.id === 'trabajo');
+const casa = savedPlaces.find((p) => p.id === 'casa');
 
 export default function Explorar() {
   const navigate = useNavigate();
-  const { userPos, setUserPos, locationAccuracy, setLocationAccuracy, destino } = useApp();
+  const { userPos, setUserPos, locationAccuracy, setLocationAccuracy, destino, setDestino } = useApp();
   const [locating, setLocating] = useState(false);
 
   const locate = useCallback(() => {
@@ -39,6 +53,32 @@ export default function Explorar() {
     return [center, destino.coords];
   }, [center, destino]);
 
+  // Todos los micros de Trujillo circulando por la ciudad en vivo, igual que en el
+  // mapa de una ruta específica — aquí se ven TODOS a la vez, no solo unos pocos.
+  const routesWithPath = useMemo(
+    () => allRoutes.map((r) => ({ ...r, visualPath: densifyPath(r.path, r.id) })),
+    []
+  );
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const interval = setInterval(() => setTick((t) => t + 1), 450);
+    return () => clearInterval(interval);
+  }, []);
+  const liveBuses = useMemo(
+    () =>
+      routesWithPath.map((r, i) => ({
+        path: r.visualPath,
+        color: r.color,
+        busPos: interpolate(r.visualPath, ((tick * (0.3 + (i % 5) * 0.15) + i * 17) % 100) / 100),
+      })),
+    [routesWithPath, tick]
+  );
+
+  function goTo(place) {
+    setDestino(place);
+    navigate('/rutas');
+  }
+
   return (
     <div className="flex-1 relative">
       <header className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-4 h-14 bg-white/95 backdrop-blur border-b border-slate-100">
@@ -62,7 +102,9 @@ export default function Explorar() {
           zoom={destino ? 14 : 15}
           userPos={userPos}
           destPos={destino?.coords}
+          destLabel={destino?.label}
           bounds={bounds}
+          otherRoutes={liveBuses}
           className="w-full h-full"
         />
       </div>
@@ -86,7 +128,9 @@ export default function Explorar() {
           <circle cx="11" cy="11" r="7" />
           <path d="M21 21l-4.3-4.3" />
         </svg>
-        <span className="text-slate-400 text-sm flex-1">¿A dónde vas hoy?</span>
+        <span className="text-slate-400 text-sm flex-1">
+          {destino ? `Destino: ${destino.label}` : '¿A dónde vas hoy?'}
+        </span>
         <svg viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2" className="w-5 h-5 shrink-0">
           <rect x="4" y="6" width="16" height="14" rx="2" />
           <path d="M9 2v6M15 2v6" />
@@ -94,8 +138,8 @@ export default function Explorar() {
       </button>
 
       <div className="absolute bottom-24 left-4 right-4 z-20 flex gap-2">
-        <QuickChip icon="💼" label="Trabajo" onClick={() => navigate('/buscar')} />
-        <QuickChip icon="🏠" label="Casa" onClick={() => navigate('/buscar')} />
+        <QuickChip icon="💼" label="Trabajo" onClick={() => goTo(trabajo)} />
+        <QuickChip icon="🏠" label="Casa" onClick={() => goTo(casa)} />
         <QuickChip icon="🕐" label="Recientes" onClick={() => navigate('/buscar')} />
       </div>
 

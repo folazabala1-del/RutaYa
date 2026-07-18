@@ -1,0 +1,236 @@
+diff --git a/src/components/AppMap.jsx b/src/components/AppMap.jsx
+index 8449a52..ddbf152 100644
+--- a/src/components/AppMap.jsx
++++ b/src/components/AppMap.jsx
+@@ -1,4 +1,4 @@
+-import { MapContainer, TileLayer, Marker, Polyline, useMap } from 'react-leaflet';
++import { MapContainer, TileLayer, Marker, Polyline, Tooltip, useMap } from 'react-leaflet';
+ import { useEffect } from 'react';
+ import L from 'leaflet';
+ import { TRUJILLO_CENTER } from '../data/mock';
+@@ -20,9 +20,9 @@ const busIcon = (color = '#EE9315', size = 30) =>
+ 
+ const pinIcon = L.divIcon({
+   className: '',
+-  html: `<div style="width:26px;height:26px;border-radius:50% 50% 50% 0;background:#0F1B3D;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.3)"></div>`,
+-  iconSize: [26, 26],
+-  iconAnchor: [13, 26],
++  html: `<div style="width:32px;height:32px;border-radius:50% 50% 50% 0;background:#0F1B3D;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;box-shadow:0 3px 8px rgba(0,0,0,0.4);border:2px solid white;"><span style="transform:rotate(45deg);font-size:14px;">🏁</span></div>`,
++  iconSize: [32, 32],
++  iconAnchor: [16, 32],
+ });
+ 
+ const stopIcon = (color = '#0F1B3D') =>
+@@ -63,6 +63,7 @@ export default function AppMap({
+   zoom = 15,
+   userPos,
+   destPos,
++  destLabel,
+   routePath,
+   routeColor = '#EE9315',
+   busPos,
+@@ -106,7 +107,13 @@ export default function AppMap({
+       {stopMarkers?.map((s, i) => <Marker key={`stop-${i}`} position={s.pos} icon={stopIcon(s.color || routeColor)} />)}
+ 
+       {userPos && <Marker position={userPos} icon={userIcon} />}
+-      {destPos && <Marker position={destPos} icon={pinIcon} />}
++      {destPos && (
++        <Marker position={destPos} icon={pinIcon}>
++          <Tooltip permanent direction="top" offset={[0, -30]} className="font-semibold text-[11px]">
++            {destLabel || 'Destino'}
++          </Tooltip>
++        </Marker>
++      )}
+       {busPos && <Marker position={busPos} icon={busIcon(routeColor)} />}
+ 
+       <FitView center={center} bounds={bounds} />
+diff --git a/src/lib/geo.js b/src/lib/geo.js
+index f759c53..8818f61 100644
+--- a/src/lib/geo.js
++++ b/src/lib/geo.js
+@@ -46,47 +46,40 @@ export function nearestPointOnPath(path, point) {
+   return best;
+ }
+ 
+-function hashSeed(str) {
+-  let h = 0;
+-  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) % 1000003;
+-  return h;
+-}
+-
+-// Suaviza un trazo (path) agregando puntos intermedios con un ligero zigzag lateral,
+-// para que se vea como una calle real en vez de una línea perfectamente recta entre
+-// dos paraderos. Es determinístico (no usa Math.random): la misma ruta siempre se ve
+-// igual entre renders, solo cambia si cambian sus coordenadas originales.
+-export function densifyPath(path, seedKey = '', segmentsPerLeg = 4, jitterKm = 0.05) {
+-  if (!path || path.length < 2) return path;
+-  const seedBase = hashSeed(seedKey);
+-  const out = [path[0]];
++// Suaviza un trazo (path) con una curva tipo Catmull-Rom que pasa exactamente por los
++// mismos puntos originales, pero dibuja el camino entre ellos como una curva natural en
++// vez de segmentos rectos — así se ve como una calle real y no una línea de regla.
++export function densifyPath(path, seedKey = '', pointsPerLeg = 8) {
++  if (!path || path.length < 3) return path;
++  const out = [];
+   for (let i = 0; i < path.length - 1; i++) {
+-    const [lat1, lon1] = path[i];
+-    const [lat2, lon2] = path[i + 1];
+-    const dLat = lat2 - lat1;
+-    const dLon = lon2 - lon1;
+-    const len = Math.hypot(dLat, dLon) || 1;
+-    const perpLat = -dLon / len;
+-    const perpLon = dLat / len;
+-    for (let s = 1; s <= segmentsPerLeg; s++) {
+-      const t = s / (segmentsPerLeg + 1);
+-      const seed = seedBase + i * 97 + s * 13.37;
+-      const rand = seededOffset(seed) * 2 - 1; // -1..1
+-      // El jitter se va a 0 en los extremos de cada tramo (sin(t*pi)) para que
+-      // los puntos originales de la ruta sigan conectando sin saltos.
+-      const jitterDeg = (jitterKm / 110.57) * rand * Math.sin(t * Math.PI);
+-      out.push([lat1 + dLat * t + perpLat * jitterDeg, lon1 + dLon * t + perpLon * jitterDeg]);
++    const p0 = path[i - 1] || path[i];
++    const p1 = path[i];
++    const p2 = path[i + 1];
++    const p3 = path[i + 2] || p2;
++    for (let s = 0; s < pointsPerLeg; s++) {
++      const t = s / pointsPerLeg;
++      const t2 = t * t;
++      const t3 = t2 * t;
++      const lat =
++        0.5 *
++        (2 * p1[0] +
++          (-p0[0] + p2[0]) * t +
++          (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 +
++          (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3);
++      const lon =
++        0.5 *
++        (2 * p1[1] +
++          (-p0[1] + p2[1]) * t +
++          (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 +
++          (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3);
++      out.push([lat, lon]);
+     }
+-    out.push(path[i + 1]);
+   }
++  out.push(path[path.length - 1]);
+   return out;
+ }
+ 
+-function seededOffset(seed) {
+-  const x = Math.sin(seed * 12.9898) * 43758.5453;
+-  return x - Math.floor(x);
+-}
+-
+ // Dado un destino [lat, lng] y la lista de rutas (con .endpoint y .destinations),
+ // devuelve las rutas ordenadas de más a menos relevantes para llegar a ese destino.
+ // Prioriza coincidencia de texto (p.ej. el usuario buscó "Huanchaco" y la ruta va a Huanchaco)
+diff --git a/src/pages/Explorar.jsx b/src/pages/Explorar.jsx
+index 48706fa..4b25990 100644
+--- a/src/pages/Explorar.jsx
++++ b/src/pages/Explorar.jsx
+@@ -2,12 +2,26 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
+ import { useNavigate } from 'react-router-dom';
+ import AppMap from '../components/AppMap';
+ import BottomNav from '../components/BottomNav';
+-import { TRUJILLO_CENTER } from '../data/mock';
++import { TRUJILLO_CENTER, routes as allRoutes, savedPlaces } from '../data/mock';
++import { densifyPath } from '../lib/geo';
+ import { useApp } from '../context/AppContext';
+ 
++function interpolate(path, t) {
++  const segs = path.length - 1;
++  const pos = t * segs;
++  const i = Math.min(Math.floor(pos), segs - 1);
++  const localT = pos - i;
++  const [lat1, lng1] = path[i];
++  const [lat2, lng2] = path[i + 1];
++  return [lat1 + (lat2 - lat1) * localT, lng1 + (lng2 - lng1) * localT];
++}
++
++const trabajo = savedPlaces.find((p) => p.id === 'trabajo');
++const casa = savedPlaces.find((p) => p.id === 'casa');
++
+ export default function Explorar() {
+   const navigate = useNavigate();
+-  const { userPos, setUserPos, locationAccuracy, setLocationAccuracy, destino } = useApp();
++  const { userPos, setUserPos, locationAccuracy, setLocationAccuracy, destino, setDestino } = useApp();
+   const [locating, setLocating] = useState(false);
+ 
+   const locate = useCallback(() => {
+@@ -39,6 +53,32 @@ export default function Explorar() {
+     return [center, destino.coords];
+   }, [center, destino]);
+ 
++  // Todos los micros de Trujillo circulando por la ciudad en vivo, igual que en el
++  // mapa de una ruta específica — aquí se ven TODOS a la vez, no solo unos pocos.
++  const routesWithPath = useMemo(
++    () => allRoutes.map((r) => ({ ...r, visualPath: densifyPath(r.path, r.id) })),
++    []
++  );
++  const [tick, setTick] = useState(0);
++  useEffect(() => {
++    const interval = setInterval(() => setTick((t) => t + 1), 450);
++    return () => clearInterval(interval);
++  }, []);
++  const liveBuses = useMemo(
++    () =>
++      routesWithPath.map((r, i) => ({
++        path: r.visualPath,
++        color: r.color,
++        busPos: interpolate(r.visualPath, ((tick * (0.3 + (i % 5) * 0.15) + i * 17) % 100) / 100),
++      })),
++    [routesWithPath, tick]
++  );
++
++  function goTo(place) {
++    setDestino(place);
++    navigate('/rutas');
++  }
++
+   return (
+     <div className="flex-1 relative">
+       <header className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-4 h-14 bg-white/95 backdrop-blur border-b border-slate-100">
+@@ -62,7 +102,9 @@ export default function Explorar() {
+           zoom={destino ? 14 : 15}
+           userPos={userPos}
+           destPos={destino?.coords}
++          destLabel={destino?.label}
+           bounds={bounds}
++          otherRoutes={liveBuses}
+           className="w-full h-full"
+         />
+       </div>
+@@ -86,7 +128,9 @@ export default function Explorar() {
+           <circle cx="11" cy="11" r="7" />
+           <path d="M21 21l-4.3-4.3" />
+         </svg>
+-        <span className="text-slate-400 text-sm flex-1">¿A dónde vas hoy?</span>
++        <span className="text-slate-400 text-sm flex-1">
++          {destino ? `Destino: ${destino.label}` : '¿A dónde vas hoy?'}
++        </span>
+         <svg viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2" className="w-5 h-5 shrink-0">
+           <rect x="4" y="6" width="16" height="14" rx="2" />
+           <path d="M9 2v6M15 2v6" />
+@@ -94,8 +138,8 @@ export default function Explorar() {
+       </button>
+ 
+       <div className="absolute bottom-24 left-4 right-4 z-20 flex gap-2">
+-        <QuickChip icon="💼" label="Trabajo" onClick={() => navigate('/buscar')} />
+-        <QuickChip icon="🏠" label="Casa" onClick={() => navigate('/buscar')} />
++        <QuickChip icon="💼" label="Trabajo" onClick={() => goTo(trabajo)} />
++        <QuickChip icon="🏠" label="Casa" onClick={() => goTo(casa)} />
+         <QuickChip icon="🕐" label="Recientes" onClick={() => navigate('/buscar')} />
+       </div>
+ 
+diff --git a/src/pages/MapaEnVivo.jsx b/src/pages/MapaEnVivo.jsx
+index ba0c903..0836698 100644
+--- a/src/pages/MapaEnVivo.jsx
++++ b/src/pages/MapaEnVivo.jsx
+@@ -128,6 +128,7 @@ export default function MapaEnVivo() {
+           zoom={14}
+           userPos={userPos}
+           destPos={destino?.coords}
++          destLabel={destino?.label}
+           bounds={bounds}
+           routePath={visualPath}
+           routeColor={route.color}

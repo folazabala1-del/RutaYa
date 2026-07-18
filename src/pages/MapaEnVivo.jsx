@@ -128,6 +128,7 @@ export default function MapaEnVivo() {
           zoom={14}
           userPos={userPos}
           destPos={destino?.coords}
+          destLabel={destino?.label}
           bounds={bounds}
           routePath={visualPath}
           routeColor={route.color}

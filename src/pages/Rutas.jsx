@@ -2,26 +2,35 @@ import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import TopBar from '../components/TopBar';
 import BottomNav from '../components/BottomNav';
-import { routes as allRoutes } from '../data/mock';
-import { rankRoutesForDestination } from '../lib/geo';
+import { routes as allRoutes, TRUJILLO_CENTER } from '../data/mock';
+import { rankRoutesForDestination, nearestPointOnPath } from '../lib/geo';
 import { useApp } from '../context/AppContext';
 
 export default function Rutas() {
   const navigate = useNavigate();
-  const { destino, setSelectedRoute } = useApp();
+  const { destino, userPos, setSelectedRoute } = useApp();
 
-  // Si hay un destino real (buscado por el usuario), ordenamos las rutas por cuál
-  // llega más cerca de ese destino (por nombre de distrito/lugar y por distancia).
-  // Además, "estiramos" el último tramo del recorrido hasta el destino real, para
-  // que el mapa muestre la ruta llegando al lugar que el usuario buscó.
+  // Si hay un destino real, ordenamos las rutas por cuál conviene más y calculamos,
+  // para cada una, dos tramos a pie: de tu ubicación al paradero más cercano de esa
+  // ruta (subida), y de la parada más cercana a tu destino hasta la puerta (bajada).
+  // El trazo del micro NO se deforma — un micro no se desvía a tu destino exacto,
+  // solo sigue su ruta fija; lo que cambia es cuánto tienes que caminar.
   const routes = useMemo(() => {
     if (!destino?.coords) return allRoutes;
+    const origin = userPos || TRUJILLO_CENTER;
     const ranked = rankRoutesForDestination(allRoutes, destino);
-    return ranked.slice(0, 3).map((r) => ({
-      ...r,
-      path: [...r.path.slice(0, -1), destino.coords],
-    }));
-  }, [destino]);
+    return ranked.slice(0, 3).map((r) => {
+      const board = nearestPointOnPath(r.path, origin);
+      const alight = nearestPointOnPath(r.path, destino.coords);
+      return {
+        ...r,
+        boardPoint: board?.coords,
+        walkToBoardM: board ? Math.round(board.distKm * 1000) : null,
+        alightPoint: alight?.coords,
+        walkFromAlightM: alight ? Math.round(alight.distKm * 1000) : null,
+      };
+    });
+  }, [destino, userPos]);
 
   function verMapa(route) {
     setSelectedRoute(route);
@@ -72,9 +81,15 @@ export default function Rutas() {
             </div>
 
             <div className="flex items-center gap-3 text-xs text-slate-400 mt-3 flex-wrap">
-              <span>🚶 {r.walk} km</span>
+              {typeof r.walkToBoardM === 'number' ? (
+                <>
+                  <span>🚶 {r.walkToBoardM} m hasta el paradero</span>
+                  <span>🚶 {r.walkFromAlightM} m desde la bajada</span>
+                </>
+              ) : (
+                <span>🚶 {r.walk} km</span>
+              )}
               <span>📍 Paradero: {r.paradero}</span>
-              {typeof r.distKm === 'number' && <span>🎯 {r.distKm} km del destino</span>}
             </div>
 
             <div className="flex gap-2 mt-3">

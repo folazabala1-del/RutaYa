@@ -1,0 +1,326 @@
+diff --git a/src/components/AppMap.jsx b/src/components/AppMap.jsx
+index b2d9902..8449a52 100644
+--- a/src/components/AppMap.jsx
++++ b/src/components/AppMap.jsx
+@@ -10,12 +10,12 @@ const userIcon = L.divIcon({
+   iconAnchor: [11, 11],
+ });
+ 
+-const busIcon = (color = '#EE9315') =>
++const busIcon = (color = '#EE9315', size = 30) =>
+   L.divIcon({
+     className: '',
+-    html: `<div style="width:30px;height:30px;border-radius:9999px;background:${color};display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.25);border:2px solid white;font-size:14px;">🚌</div>`,
+-    iconSize: [30, 30],
+-    iconAnchor: [15, 15],
++    html: `<div style="width:${size}px;height:${size}px;border-radius:9999px;background:${color};display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.25);border:2px solid white;font-size:${Math.round(size * 0.47)}px;">🚌</div>`,
++    iconSize: [size, size],
++    iconAnchor: [size / 2, size / 2],
+   });
+ 
+ const pinIcon = L.divIcon({
+@@ -25,6 +25,14 @@ const pinIcon = L.divIcon({
+   iconAnchor: [13, 26],
+ });
+ 
++const stopIcon = (color = '#0F1B3D') =>
++  L.divIcon({
++    className: '',
++    html: `<div style="width:14px;height:14px;border-radius:9999px;background:white;border:3px solid ${color};box-shadow:0 1px 4px rgba(0,0,0,0.35)"></div>`,
++    iconSize: [14, 14],
++    iconAnchor: [7, 7],
++  });
++
+ function FitView({ center, bounds }) {
+   const map = useMap();
+ 
+@@ -39,7 +47,7 @@ function FitView({ center, bounds }) {
+ 
+   useEffect(() => {
+     if (bounds && bounds.length >= 2) {
+-      // Ajusta la vista para que se vean tanto la ubicación del usuario como el destino.
++      // Ajusta la vista para que se vean tu ubicación, el destino y los paraderos.
+       map.fitBounds(bounds, { padding: [56, 56], maxZoom: 16 });
+     } else if (center) {
+       map.setView(center, map.getZoom(), { animate: true });
+@@ -59,6 +67,9 @@ export default function AppMap({
+   routeColor = '#EE9315',
+   busPos,
+   bounds,
++  walkLines, // [{ from: [lat,lng], to: [lat,lng] }] — tramos a pie (punteados)
++  stopMarkers, // [{ pos: [lat,lng], color }] — paradero de subida/bajada
++  otherRoutes, // [{ path, color, busPos }] — otros micros circulando de fondo
+   className = '',
+   interactive = true,
+ }) {
+@@ -78,10 +89,26 @@ export default function AppMap({
+         url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+         attribution=""
+       />
++
++      {otherRoutes?.map((r, i) => (
++        <Polyline key={`bg-line-${i}`} positions={r.path} pathOptions={{ color: r.color, weight: 3, opacity: 0.35 }} />
++      ))}
++      {otherRoutes?.map((r, i) =>
++        r.busPos ? <Marker key={`bg-bus-${i}`} position={r.busPos} icon={busIcon(r.color, 22)} /> : null
++      )}
++
++      {walkLines?.map((w, i) => (
++        <Polyline key={`walk-${i}`} positions={[w.from, w.to]} pathOptions={{ color: '#64748B', weight: 3, dashArray: '2, 9', lineCap: 'round' }} />
++      ))}
++
++      {routePath && <Polyline positions={routePath} pathOptions={{ color: routeColor, weight: 5, lineCap: 'round', lineJoin: 'round' }} />}
++
++      {stopMarkers?.map((s, i) => <Marker key={`stop-${i}`} position={s.pos} icon={stopIcon(s.color || routeColor)} />)}
++
+       {userPos && <Marker position={userPos} icon={userIcon} />}
+       {destPos && <Marker position={destPos} icon={pinIcon} />}
+-      {routePath && <Polyline positions={routePath} pathOptions={{ color: routeColor, weight: 4, dashArray: '1, 10', lineCap: 'round' }} />}
+       {busPos && <Marker position={busPos} icon={busIcon(routeColor)} />}
++
+       <FitView center={center} bounds={bounds} />
+     </MapContainer>
+   );
+diff --git a/src/lib/geo.js b/src/lib/geo.js
+index 9a85417..fdfb7cb 100644
+--- a/src/lib/geo.js
++++ b/src/lib/geo.js
+@@ -10,6 +10,42 @@ export function haversineKm([lat1, lon1], [lat2, lon2]) {
+   return R * c;
+ }
+ 
++// Distancia aproximada punto-segmento en km (proyección plana, válida a escala de ciudad).
++function pointToSegmentKm(p, a, b) {
++  const toXY = ([lat, lon]) => [lon * 111.32 * Math.cos((lat * Math.PI) / 180), lat * 110.57];
++  const [px, py] = toXY(p);
++  const [ax, ay] = toXY(a);
++  const [bx, by] = toXY(b);
++  const dx = bx - ax;
++  const dy = by - ay;
++  const lenSq = dx * dx + dy * dy;
++  let t = lenSq === 0 ? 0 : ((px - ax) * dx + (py - ay) * dy) / lenSq;
++  t = Math.max(0, Math.min(1, t));
++  const cx = ax + t * dx;
++  const cy = ay + t * dy;
++  return { t, distKm: Math.hypot(px - cx, py - cy) };
++}
++
++// Punto más cercano de una ruta (polilínea) a un punto dado — p. ej. el paradero más
++// cercano a tu ubicación para subir, o el punto de la ruta más cercano a tu destino
++// para bajarte y caminar el resto. Devuelve { coords, distKm } o null.
++export function nearestPointOnPath(path, point) {
++  if (!point || !path || path.length < 2) return null;
++  let best = null;
++  for (let i = 0; i < path.length - 1; i++) {
++    const a = path[i];
++    const b = path[i + 1];
++    const { t, distKm } = pointToSegmentKm(point, a, b);
++    if (!best || distKm < best.distKm) {
++      best = {
++        coords: [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t],
++        distKm,
++      };
++    }
++  }
++  return best;
++}
++
+ // Dado un destino [lat, lng] y la lista de rutas (con .endpoint y .destinations),
+ // devuelve las rutas ordenadas de más a menos relevantes para llegar a ese destino.
+ // Prioriza coincidencia de texto (p.ej. el usuario buscó "Huanchaco" y la ruta va a Huanchaco)
+diff --git a/src/pages/MapaEnVivo.jsx b/src/pages/MapaEnVivo.jsx
+index afb18df..3295034 100644
+--- a/src/pages/MapaEnVivo.jsx
++++ b/src/pages/MapaEnVivo.jsx
+@@ -1,7 +1,7 @@
+ import { useEffect, useMemo, useState } from 'react';
+ import { useNavigate } from 'react-router-dom';
+ import AppMap from '../components/AppMap';
+-import { routes, TRUJILLO_CENTER } from '../data/mock';
++import { routes as allRoutes, TRUJILLO_CENTER } from '../data/mock';
+ import { useApp } from '../context/AppContext';
+ 
+ // Interpola posición a lo largo de un path de coordenadas según progreso 0-1
+@@ -18,9 +18,14 @@ function interpolate(path, t) {
+ export default function MapaEnVivo() {
+   const navigate = useNavigate();
+   const { selectedRoute, destino, userPos, setUserPos } = useApp();
+-  const route = selectedRoute || routes[0];
+-  const [progress, setProgress] = useState(0.15);
+-  const [etaMin, setEtaMin] = useState(10);
++  const route = selectedRoute || allRoutes[0];
++
++  // Otros micros de Trujillo circulando de fondo, para que el mapa se sienta vivo
++  // con distintas rutas recorriendo la ciudad (no solo la que elegiste).
++  const backgroundRoutes = useMemo(
++    () => allRoutes.filter((r) => r.id !== route.id).slice(0, 3),
++    [route]
++  );
+ 
+   // Si aún no tenemos tu ubicación real (p. ej. se saltó la pantalla de permisos
+   // porque ya había una sesión guardada), la pedimos aquí también.
+@@ -33,22 +38,52 @@ export default function MapaEnVivo() {
+     );
+   }, [userPos, setUserPos]);
+ 
++  const [tick, setTick] = useState(0);
++  const [etaMin, setEtaMin] = useState(10);
++
+   useEffect(() => {
+     const interval = setInterval(() => {
+-      setProgress((p) => (p >= 0.95 ? 0.15 : p + 0.02));
++      setTick((t) => t + 1);
+       setEtaMin((m) => (m <= 1 ? 12 : m - 1));
+-    }, 1800);
++    }, 450);
+     return () => clearInterval(interval);
+   }, []);
+ 
+-  const busPos = useMemo(() => interpolate(route.path, progress), [route, progress]);
++  // Cada micro (el elegido y los de fondo) recorre su propia ruta completa en loop,
++  // cada uno con su propia velocidad y punto de partida para que no se vean sincronizados.
++  const busPos = useMemo(() => interpolate(route.path, ((tick * 0.6) % 100) / 100), [route, tick]);
++  const bgBuses = useMemo(
++    () =>
++      backgroundRoutes.map((r, i) => ({
++        path: r.path,
++        color: r.color,
++        busPos: interpolate(r.path, ((tick * (0.35 + i * 0.22) + i * 27) % 100) / 100),
++      })),
++    [backgroundRoutes, tick]
++  );
+ 
+-  // Ajustamos la vista para que se vean tu ubicación y el destino a la vez
+-  // (en vez de perseguir al bus, que antes sacaba ambos puntos de pantalla).
++  // Tramos a pie reales: de tu ubicación al paradero de subida, y de la bajada a tu destino.
++  const walkLines = useMemo(() => {
++    const lines = [];
++    if (userPos && route.boardPoint) lines.push({ from: userPos, to: route.boardPoint });
++    if (route.alightPoint && destino?.coords) lines.push({ from: route.alightPoint, to: destino.coords });
++    return lines;
++  }, [userPos, destino, route]);
++
++  const stopMarkers = useMemo(() => {
++    const stops = [];
++    if (route.boardPoint) stops.push({ pos: route.boardPoint, color: route.color });
++    if (route.alightPoint) stops.push({ pos: route.alightPoint, color: route.color });
++    return stops;
++  }, [route]);
++
++  // Ajustamos la vista para que se vean tu ubicación, el destino y los paraderos a la vez.
+   const bounds = useMemo(() => {
+-    const pts = [userPos, destino?.coords].filter(Boolean);
++    const pts = [userPos, destino?.coords, route.boardPoint, route.alightPoint].filter(Boolean);
+     return pts.length >= 2 ? pts : null;
+-  }, [userPos, destino]);
++  }, [userPos, destino, route]);
++
++  const destinoLabel = destino?.label || route.hacia;
+ 
+   return (
+     <div className="flex-1 relative">
+@@ -77,6 +112,9 @@ export default function MapaEnVivo() {
+           routePath={route.path}
+           routeColor={route.color}
+           busPos={busPos}
++          walkLines={walkLines}
++          stopMarkers={stopMarkers}
++          otherRoutes={bgBuses}
+           className="w-full h-full"
+         />
+       </div>
+@@ -85,16 +123,19 @@ export default function MapaEnVivo() {
+         <span className="w-1.5 h-1.5 rounded-full bg-amber-500 pulse-dot" /> GPS LIVE
+       </div>
+ 
++      {(typeof route.walkToBoardM === 'number' || typeof route.walkFromAlightM === 'number') && (
++        <div className="absolute top-[112px] left-4 z-20 bg-white rounded-xl shadow-card px-3 py-2 text-[11px] text-slate-500 leading-relaxed">
++          {typeof route.walkToBoardM === 'number' && <p>🚶 Camina {route.walkToBoardM} m hasta el paradero</p>}
++          {typeof route.walkFromAlightM === 'number' && <p>🚶 Camina {route.walkFromAlightM} m desde la bajada</p>}
++        </div>
++      )}
++
+       <div className="absolute bottom-0 left-0 right-0 z-20 bg-white rounded-t-3xl shadow-[0_-8px_30px_rgba(15,27,61,0.12)] px-5 pt-5 pb-8">
+         <div className="flex items-center justify-between mb-1">
+           <span className="bg-amber-400 text-white text-[11px] font-bold px-2.5 py-1 rounded-lg">RUTA {route.code}</span>
+           <span className="text-xs text-slate-400 text-right">
+             {destino ? 'Destino' : 'Próxima parada'}<br />
+-            <b className="text-navy-900">
+-              {(destino?.label || route.hacia).length > 22
+-                ? (destino?.label || route.hacia).slice(0, 22) + '…'
+-                : (destino?.label || route.hacia)}
+-            </b>
++            <b className="text-navy-900">{destinoLabel.length > 22 ? destinoLabel.slice(0, 22) + '…' : destinoLabel}</b>
+           </span>
+         </div>
+         <p className="font-display font-extrabold text-2xl text-navy-900 mt-1">Llegada en {etaMin} min</p>
+diff --git a/src/pages/Rutas.jsx b/src/pages/Rutas.jsx
+index 973c69b..bac669f 100644
+--- a/src/pages/Rutas.jsx
++++ b/src/pages/Rutas.jsx
+@@ -2,26 +2,35 @@ import { useMemo } from 'react';
+ import { useNavigate } from 'react-router-dom';
+ import TopBar from '../components/TopBar';
+ import BottomNav from '../components/BottomNav';
+-import { routes as allRoutes } from '../data/mock';
+-import { rankRoutesForDestination } from '../lib/geo';
++import { routes as allRoutes, TRUJILLO_CENTER } from '../data/mock';
++import { rankRoutesForDestination, nearestPointOnPath } from '../lib/geo';
+ import { useApp } from '../context/AppContext';
+ 
+ export default function Rutas() {
+   const navigate = useNavigate();
+-  const { destino, setSelectedRoute } = useApp();
++  const { destino, userPos, setSelectedRoute } = useApp();
+ 
+-  // Si hay un destino real (buscado por el usuario), ordenamos las rutas por cuál
+-  // llega más cerca de ese destino (por nombre de distrito/lugar y por distancia).
+-  // Además, "estiramos" el último tramo del recorrido hasta el destino real, para
+-  // que el mapa muestre la ruta llegando al lugar que el usuario buscó.
++  // Si hay un destino real, ordenamos las rutas por cuál conviene más y calculamos,
++  // para cada una, dos tramos a pie: de tu ubicación al paradero más cercano de esa
++  // ruta (subida), y de la parada más cercana a tu destino hasta la puerta (bajada).
++  // El trazo del micro NO se deforma — un micro no se desvía a tu destino exacto,
++  // solo sigue su ruta fija; lo que cambia es cuánto tienes que caminar.
+   const routes = useMemo(() => {
+     if (!destino?.coords) return allRoutes;
++    const origin = userPos || TRUJILLO_CENTER;
+     const ranked = rankRoutesForDestination(allRoutes, destino);
+-    return ranked.slice(0, 3).map((r) => ({
+-      ...r,
+-      path: [...r.path.slice(0, -1), destino.coords],
+-    }));
+-  }, [destino]);
++    return ranked.slice(0, 3).map((r) => {
++      const board = nearestPointOnPath(r.path, origin);
++      const alight = nearestPointOnPath(r.path, destino.coords);
++      return {
++        ...r,
++        boardPoint: board?.coords,
++        walkToBoardM: board ? Math.round(board.distKm * 1000) : null,
++        alightPoint: alight?.coords,
++        walkFromAlightM: alight ? Math.round(alight.distKm * 1000) : null,
++      };
++    });
++  }, [destino, userPos]);
+ 
+   function verMapa(route) {
+     setSelectedRoute(route);
+@@ -72,9 +81,15 @@ export default function Rutas() {
+             </div>
+ 
+             <div className="flex items-center gap-3 text-xs text-slate-400 mt-3 flex-wrap">
+-              <span>🚶 {r.walk} km</span>
++              {typeof r.walkToBoardM === 'number' ? (
++                <>
++                  <span>🚶 {r.walkToBoardM} m hasta el paradero</span>
++                  <span>🚶 {r.walkFromAlightM} m desde la bajada</span>
++                </>
++              ) : (
++                <span>🚶 {r.walk} km</span>
++              )}
+               <span>📍 Paradero: {r.paradero}</span>
+-              {typeof r.distKm === 'number' && <span>🎯 {r.distKm} km del destino</span>}
+             </div>
+ 
+             <div className="flex gap-2 mt-3">

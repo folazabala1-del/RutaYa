@@ -11,6 +11,7 @@ export function AppProvider({ children }) {
   const [authLoading, setAuthLoading] = useState(false);
   const [locationEnabled, setLocationEnabled] = useState(false);
   const [userPos, setUserPos] = useState(null); // [lat, lng] real, o null si no se pudo obtener
+  const [locationAccuracy, setLocationAccuracy] = useState(null); // metros de margen de error del GPS
   const [destino, setDestino] = useState(null);
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [savedRoutesList, setSavedRoutesList] = useState(initialRoutes);
@@ -89,6 +90,7 @@ export function AppProvider({ children }) {
         user, token, authLoading, login, register, logout,
         locationEnabled, setLocationEnabled,
         userPos, setUserPos,
+        locationAccuracy, setLocationAccuracy,
         destino, setDestino,
         selectedRoute, setSelectedRoute,
         savedRoutesList, removeSavedRoute,

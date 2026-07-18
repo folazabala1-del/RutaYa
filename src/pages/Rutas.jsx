@@ -82,10 +82,14 @@ export default function Rutas() {
 
             <div className="flex items-center gap-3 text-xs text-slate-400 mt-3 flex-wrap">
               {typeof r.walkToBoardM === 'number' ? (
-                <>
-                  <span>🚶 {r.walkToBoardM} m hasta el paradero</span>
-                  <span>🚶 {r.walkFromAlightM} m desde la bajada</span>
-                </>
+                r.walkToBoardM < 5000 ? (
+                  <>
+                    <span>🚶 {r.walkToBoardM} m hasta el paradero</span>
+                    <span>🚶 {r.walkFromAlightM} m desde la bajada</span>
+                  </>
+                ) : (
+                  <span className="text-amber-600">⚠ Tu ubicación es imprecisa (GPS con {(r.walkToBoardM / 1000).toFixed(0)} km de margen)</span>
+                )
               ) : (
                 <span>🚶 {r.walk} km</span>
               )}

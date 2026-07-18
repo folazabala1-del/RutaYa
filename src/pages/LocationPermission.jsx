@@ -6,7 +6,7 @@ export default function LocationPermission() {
   const [step, setStep] = useState(1);
   const [requesting, setRequesting] = useState(false);
   const navigate = useNavigate();
-  const { setLocationEnabled, setUserPos } = useApp();
+  const { setLocationEnabled, setUserPos, setLocationAccuracy } = useApp();
 
   function handleAllow() {
     if (step === 1) {
@@ -24,6 +24,7 @@ export default function LocationPermission() {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setUserPos([pos.coords.latitude, pos.coords.longitude]);
+        setLocationAccuracy(pos.coords.accuracy);
         setLocationEnabled(true);
         setRequesting(false);
         navigate('/login');

@@ -56,7 +56,11 @@ export function rankRoutesForDestination(routes, destino) {
   const query = (destino.label || '').toLowerCase();
 
   const scored = routes.map((route) => {
-    const distKm = haversineKm(destino.coords, route.endpoint || route.path[route.path.length - 1]);
+    // Como ahora las rutas son recorridos largos (de un extremo de la ciudad al otro),
+    // lo relevante es qué tan cerca pasa la ruta del destino en CUALQUIER punto de su
+    // trazo, no solo en su parada final.
+    const nearest = nearestPointOnPath(route.path, destino.coords);
+    const distKm = nearest ? nearest.distKm : haversineKm(destino.coords, route.endpoint || route.path[route.path.length - 1]);
     const textMatch = (route.destinations || []).some(
       (d) => query.includes(d) || d.includes(query)
     );

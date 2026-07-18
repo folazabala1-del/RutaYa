@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { db } from '../db/database.js';
+import { pool } from '../db/database.js';
 
 export const authRouter = Router();
 
@@ -28,17 +28,18 @@ authRouter.post('/register', async (req, res) => {
   }
 
   try {
-    const existing = db.prepare('SELECT id FROM users WHERE dni = ?').get(dni);
-    if (existing) {
+    const existing = await pool.query('SELECT id FROM users WHERE dni = $1', [dni]);
+    if (existing.rows.length > 0) {
       return res.status(409).json({ error: 'Ya existe una cuenta con ese DNI.' });
     }
 
     const hash = await bcrypt.hash(password, 10);
-    const info = db
-      .prepare('INSERT INTO users (dni, password_hash, name) VALUES (?, ?, ?)')
-      .run(dni, hash, name || 'Usuario RutaYa');
+    const inserted = await pool.query(
+      'INSERT INTO users (dni, password_hash, name) VALUES ($1, $2, $3) RETURNING id, dni, name',
+      [dni, hash, name || 'Usuario RutaYa']
+    );
 
-    const user = db.prepare('SELECT id, dni, name FROM users WHERE id = ?').get(info.lastInsertRowid);
+    const user = inserted.rows[0];
     const token = signToken(user);
     res.status(201).json({ user: publicUser(user), token });
   } catch (err) {
@@ -55,7 +56,8 @@ authRouter.post('/login', async (req, res) => {
   }
 
   try {
-    const user = db.prepare('SELECT * FROM users WHERE dni = ?').get(dni);
+    const result = await pool.query('SELECT * FROM users WHERE dni = $1', [dni]);
+    const user = result.rows[0];
     if (!user) {
       return res.status(401).json({ error: 'DNI o contraseña incorrectos.' });
     }

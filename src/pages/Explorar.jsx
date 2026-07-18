@@ -7,7 +7,7 @@ import { useApp } from '../context/AppContext';
 
 export default function Explorar() {
   const navigate = useNavigate();
-  const { userPos, setUserPos, destino } = useApp();
+  const { userPos, setUserPos, locationAccuracy, setLocationAccuracy, destino } = useApp();
   const [locating, setLocating] = useState(false);
 
   const locate = useCallback(() => {
@@ -16,12 +16,13 @@ export default function Explorar() {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setUserPos([pos.coords.latitude, pos.coords.longitude]);
+        setLocationAccuracy(pos.coords.accuracy);
         setLocating(false);
       },
       () => setLocating(false),
       { enableHighAccuracy: true, timeout: 8000 }
     );
-  }, [setUserPos]);
+  }, [setUserPos, setLocationAccuracy]);
 
   // Si por alguna razón no se capturó la ubicación en la pantalla de permisos
   // (p. ej. una sesión ya guardada que saltó ese paso), la pedimos aquí también.
@@ -69,6 +70,11 @@ export default function Explorar() {
       {!userPos && (
         <div className="absolute top-[68px] left-4 right-4 z-20 bg-amber-50 border border-amber-200 text-amber-700 text-xs font-semibold rounded-xl px-3 py-2 text-center">
           {locating ? 'Obteniendo tu ubicación…' : 'No pudimos obtener tu ubicación. Actívala desde el navegador.'}
+        </div>
+      )}
+      {userPos && locationAccuracy > 1500 && (
+        <div className="absolute top-[68px] left-4 right-4 z-20 bg-amber-50 border border-amber-200 text-amber-700 text-xs font-semibold rounded-xl px-3 py-2 text-center">
+          ⚠ Tu ubicación es poco precisa (margen de {Math.round(locationAccuracy / 1000)} km). En una laptop sin GPS esto es normal — usa el celular para mejor precisión.
         </div>
       )}
 

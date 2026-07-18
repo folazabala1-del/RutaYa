@@ -1,21 +1,21 @@
-import Database from 'better-sqlite3';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-import { mkdirSync } from 'fs';
+import pg from 'pg';
 import 'dotenv/config';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+const { Pool } = pg;
 
-// La base de datos vive como un archivo dentro del propio servicio (backend/data/rutaya.db).
-// Nota importante: en el plan gratis de Render el disco NO es persistente entre deploys —
-// cada vez que se vuelve a desplegar (push a GitHub), este archivo se reinicia vacío.
-// Para un prototipo/demo está perfecto; si más adelante necesitan que los datos sobrevivan
-// entre deploys, ahí sí conviene un "Persistent Disk" de Render (de pago) o una base de
-// datos gestionada aparte.
-const dataDir = process.env.DB_PATH ? dirname(process.env.DB_PATH) : join(__dirname, '..', '..', 'data');
-mkdirSync(dataDir, { recursive: true });
+// IMPORTANTE: antes esto usaba SQLite guardado como archivo local (backend/data/rutaya.db).
+// En el plan gratis de Render el disco NO es persistente entre deploys: cada vez que se
+// vuelve a desplegar, ese archivo se reiniciaba vacío y se perdían todos los usuarios.
+// Por eso ahora usamos Postgres (Render Postgres, gratis) a través de DATABASE_URL, que sí
+// sobrevive entre deploys y reinicios del servicio.
+if (!process.env.DATABASE_URL) {
+  console.warn(
+    '⚠️  Falta la variable de entorno DATABASE_URL. Crea una base de datos Postgres en ' +
+    'Render y copia su "Internal Database URL" en las variables de entorno de este servicio.'
+  );
+}
 
-const dbPath = process.env.DB_PATH || join(dataDir, 'rutaya.db');
-
-export const db = new Database(dbPath);
-db.pragma('journal_mode = WAL');
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false,
+});

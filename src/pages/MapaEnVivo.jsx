@@ -17,13 +17,18 @@ function interpolate(path, t) {
 
 export default function MapaEnVivo() {
   const navigate = useNavigate();
-  const { selectedRoute, destino, userPos, setUserPos } = useApp();
+  const { selectedRoute, destino, userPos, setUserPos, setLocationAccuracy } = useApp();
   const route = selectedRoute || allRoutes[0];
+
+  // El tramo "camina hasta el paradero" no es confiable si el GPS del dispositivo dio
+  // una lectura muy imprecisa (común en laptops sin chip GPS) — evitamos mostrar un
+  // número absurdo como "camina 42959 m" y en vez de eso avisamos.
+  const walkToBoardReliable = typeof route.walkToBoardM === 'number' && route.walkToBoardM < 5000;
 
   // Otros micros de Trujillo circulando de fondo, para que el mapa se sienta vivo
   // con distintas rutas recorriendo la ciudad (no solo la que elegiste).
   const backgroundRoutes = useMemo(
-    () => allRoutes.filter((r) => r.id !== route.id).slice(0, 3),
+    () => allRoutes.filter((r) => r.id !== route.id).slice(0, 5),
     [route]
   );
 
@@ -32,11 +37,14 @@ export default function MapaEnVivo() {
   useEffect(() => {
     if (userPos || !('geolocation' in navigator)) return;
     navigator.geolocation.getCurrentPosition(
-      (pos) => setUserPos([pos.coords.latitude, pos.coords.longitude]),
+      (pos) => {
+        setUserPos([pos.coords.latitude, pos.coords.longitude]);
+        setLocationAccuracy(pos.coords.accuracy);
+      },
       () => {},
       { enableHighAccuracy: true, timeout: 8000 }
     );
-  }, [userPos, setUserPos]);
+  }, [userPos, setUserPos, setLocationAccuracy]);
 
   const [tick, setTick] = useState(0);
   const [etaMin, setEtaMin] = useState(10);
@@ -63,12 +71,14 @@ export default function MapaEnVivo() {
   );
 
   // Tramos a pie reales: de tu ubicación al paradero de subida, y de la bajada a tu destino.
+  // Si la ubicación no es confiable, no dibujamos ese tramo (evita una línea absurda cruzando
+  // media ciudad) y tampoco la usamos para encuadrar el mapa.
   const walkLines = useMemo(() => {
     const lines = [];
-    if (userPos && route.boardPoint) lines.push({ from: userPos, to: route.boardPoint });
+    if (userPos && walkToBoardReliable && route.boardPoint) lines.push({ from: userPos, to: route.boardPoint });
     if (route.alightPoint && destino?.coords) lines.push({ from: route.alightPoint, to: destino.coords });
     return lines;
-  }, [userPos, destino, route]);
+  }, [userPos, destino, route, walkToBoardReliable]);
 
   const stopMarkers = useMemo(() => {
     const stops = [];
@@ -79,9 +89,9 @@ export default function MapaEnVivo() {
 
   // Ajustamos la vista para que se vean tu ubicación, el destino y los paraderos a la vez.
   const bounds = useMemo(() => {
-    const pts = [userPos, destino?.coords, route.boardPoint, route.alightPoint].filter(Boolean);
+    const pts = [walkToBoardReliable ? userPos : null, destino?.coords, route.boardPoint, route.alightPoint].filter(Boolean);
     return pts.length >= 2 ? pts : null;
-  }, [userPos, destino, route]);
+  }, [userPos, destino, route, walkToBoardReliable]);
 
   const destinoLabel = destino?.label || route.hacia;
 
@@ -104,7 +114,7 @@ export default function MapaEnVivo() {
 
       <div className="absolute inset-0 z-0">
         <AppMap
-          center={userPos || destino?.coords || TRUJILLO_CENTER}
+          center={(walkToBoardReliable && userPos) || destino?.coords || TRUJILLO_CENTER}
           zoom={14}
           userPos={userPos}
           destPos={destino?.coords}
@@ -123,10 +133,15 @@ export default function MapaEnVivo() {
         <span className="w-1.5 h-1.5 rounded-full bg-amber-500 pulse-dot" /> GPS LIVE
       </div>
 
-      {(typeof route.walkToBoardM === 'number' || typeof route.walkFromAlightM === 'number') && (
+      {(walkToBoardReliable || typeof route.walkFromAlightM === 'number') && (
         <div className="absolute top-[112px] left-4 z-20 bg-white rounded-xl shadow-card px-3 py-2 text-[11px] text-slate-500 leading-relaxed">
-          {typeof route.walkToBoardM === 'number' && <p>🚶 Camina {route.walkToBoardM} m hasta el paradero</p>}
+          {walkToBoardReliable && <p>🚶 Camina {route.walkToBoardM} m hasta el paradero</p>}
           {typeof route.walkFromAlightM === 'number' && <p>🚶 Camina {route.walkFromAlightM} m desde la bajada</p>}
+        </div>
+      )}
+      {!walkToBoardReliable && typeof route.walkToBoardM === 'number' && (
+        <div className="absolute top-[112px] left-4 right-4 z-20 bg-amber-50 border border-amber-200 text-amber-700 text-[11px] font-semibold rounded-xl px-3 py-2 text-center">
+          ⚠ Tu ubicación parece imprecisa para calcular la caminata al paradero. Prueba desde el celular con GPS activado.
         </div>
       )}
 

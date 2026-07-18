@@ -46,6 +46,47 @@ export function nearestPointOnPath(path, point) {
   return best;
 }
 
+function hashSeed(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) % 1000003;
+  return h;
+}
+
+// Suaviza un trazo (path) agregando puntos intermedios con un ligero zigzag lateral,
+// para que se vea como una calle real en vez de una línea perfectamente recta entre
+// dos paraderos. Es determinístico (no usa Math.random): la misma ruta siempre se ve
+// igual entre renders, solo cambia si cambian sus coordenadas originales.
+export function densifyPath(path, seedKey = '', segmentsPerLeg = 4, jitterKm = 0.05) {
+  if (!path || path.length < 2) return path;
+  const seedBase = hashSeed(seedKey);
+  const out = [path[0]];
+  for (let i = 0; i < path.length - 1; i++) {
+    const [lat1, lon1] = path[i];
+    const [lat2, lon2] = path[i + 1];
+    const dLat = lat2 - lat1;
+    const dLon = lon2 - lon1;
+    const len = Math.hypot(dLat, dLon) || 1;
+    const perpLat = -dLon / len;
+    const perpLon = dLat / len;
+    for (let s = 1; s <= segmentsPerLeg; s++) {
+      const t = s / (segmentsPerLeg + 1);
+      const seed = seedBase + i * 97 + s * 13.37;
+      const rand = seededOffset(seed) * 2 - 1; // -1..1
+      // El jitter se va a 0 en los extremos de cada tramo (sin(t*pi)) para que
+      // los puntos originales de la ruta sigan conectando sin saltos.
+      const jitterDeg = (jitterKm / 110.57) * rand * Math.sin(t * Math.PI);
+      out.push([lat1 + dLat * t + perpLat * jitterDeg, lon1 + dLon * t + perpLon * jitterDeg]);
+    }
+    out.push(path[i + 1]);
+  }
+  return out;
+}
+
+function seededOffset(seed) {
+  const x = Math.sin(seed * 12.9898) * 43758.5453;
+  return x - Math.floor(x);
+}
+
 // Dado un destino [lat, lng] y la lista de rutas (con .endpoint y .destinations),
 // devuelve las rutas ordenadas de más a menos relevantes para llegar a ese destino.
 // Prioriza coincidencia de texto (p.ej. el usuario buscó "Huanchaco" y la ruta va a Huanchaco)

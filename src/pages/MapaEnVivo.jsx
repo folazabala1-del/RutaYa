@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AppMap from '../components/AppMap';
 import { routes as allRoutes, TRUJILLO_CENTER } from '../data/mock';
+import { densifyPath } from '../lib/geo';
 import { useApp } from '../context/AppContext';
 
 // Interpola posición a lo largo de un path de coordenadas según progreso 0-1
@@ -25,10 +26,19 @@ export default function MapaEnVivo() {
   // número absurdo como "camina 42959 m" y en vez de eso avisamos.
   const walkToBoardReliable = typeof route.walkToBoardM === 'number' && route.walkToBoardM < 5000;
 
+  // Suavizamos el trazo (más puntos + un ligero zigzag) para que se vea como una calle
+  // real y no una línea perfectamente recta entre dos paraderos.
+  const visualPath = useMemo(() => densifyPath(route.path, route.id), [route]);
+
   // Otros micros de Trujillo circulando de fondo, para que el mapa se sienta vivo
-  // con distintas rutas recorriendo la ciudad (no solo la que elegiste).
+  // con distintas rutas recorriendo la ciudad (no solo la que elegiste). Con 13 rutas
+  // reales disponibles, mostramos varias a la vez sin saturar la pantalla.
   const backgroundRoutes = useMemo(
-    () => allRoutes.filter((r) => r.id !== route.id).slice(0, 5),
+    () =>
+      allRoutes
+        .filter((r) => r.id !== route.id)
+        .slice(0, 7)
+        .map((r) => ({ ...r, visualPath: densifyPath(r.path, r.id) })),
     [route]
   );
 
@@ -59,13 +69,13 @@ export default function MapaEnVivo() {
 
   // Cada micro (el elegido y los de fondo) recorre su propia ruta completa en loop,
   // cada uno con su propia velocidad y punto de partida para que no se vean sincronizados.
-  const busPos = useMemo(() => interpolate(route.path, ((tick * 0.6) % 100) / 100), [route, tick]);
+  const busPos = useMemo(() => interpolate(visualPath, ((tick * 0.6) % 100) / 100), [visualPath, tick]);
   const bgBuses = useMemo(
     () =>
       backgroundRoutes.map((r, i) => ({
-        path: r.path,
+        path: r.visualPath,
         color: r.color,
-        busPos: interpolate(r.path, ((tick * (0.35 + i * 0.22) + i * 27) % 100) / 100),
+        busPos: interpolate(r.visualPath, ((tick * (0.35 + i * 0.18) + i * 21) % 100) / 100),
       })),
     [backgroundRoutes, tick]
   );
@@ -119,7 +129,7 @@ export default function MapaEnVivo() {
           userPos={userPos}
           destPos={destino?.coords}
           bounds={bounds}
-          routePath={route.path}
+          routePath={visualPath}
           routeColor={route.color}
           busPos={busPos}
           walkLines={walkLines}

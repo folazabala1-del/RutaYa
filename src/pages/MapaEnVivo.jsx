@@ -17,10 +17,21 @@ function interpolate(path, t) {
 
 export default function MapaEnVivo() {
   const navigate = useNavigate();
-  const { selectedRoute, destino, userPos } = useApp();
+  const { selectedRoute, destino, userPos, setUserPos } = useApp();
   const route = selectedRoute || routes[0];
   const [progress, setProgress] = useState(0.15);
   const [etaMin, setEtaMin] = useState(10);
+
+  // Si aún no tenemos tu ubicación real (p. ej. se saltó la pantalla de permisos
+  // porque ya había una sesión guardada), la pedimos aquí también.
+  useEffect(() => {
+    if (userPos || !('geolocation' in navigator)) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => setUserPos([pos.coords.latitude, pos.coords.longitude]),
+      () => {},
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  }, [userPos, setUserPos]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -31,6 +42,13 @@ export default function MapaEnVivo() {
   }, []);
 
   const busPos = useMemo(() => interpolate(route.path, progress), [route, progress]);
+
+  // Ajustamos la vista para que se vean tu ubicación y el destino a la vez
+  // (en vez de perseguir al bus, que antes sacaba ambos puntos de pantalla).
+  const bounds = useMemo(() => {
+    const pts = [userPos, destino?.coords].filter(Boolean);
+    return pts.length >= 2 ? pts : null;
+  }, [userPos, destino]);
 
   return (
     <div className="flex-1 relative">
@@ -51,10 +69,11 @@ export default function MapaEnVivo() {
 
       <div className="absolute inset-0 z-0">
         <AppMap
-          center={userPos || TRUJILLO_CENTER}
+          center={userPos || destino?.coords || TRUJILLO_CENTER}
           zoom={14}
           userPos={userPos}
           destPos={destino?.coords}
+          bounds={bounds}
           routePath={route.path}
           routeColor={route.color}
           busPos={busPos}
@@ -70,8 +89,12 @@ export default function MapaEnVivo() {
         <div className="flex items-center justify-between mb-1">
           <span className="bg-amber-400 text-white text-[11px] font-bold px-2.5 py-1 rounded-lg">RUTA {route.code}</span>
           <span className="text-xs text-slate-400 text-right">
-            Próxima parada<br />
-            <b className="text-navy-900">{route.hacia.length > 22 ? route.hacia.slice(0, 22) + '…' : route.hacia}</b>
+            {destino ? 'Destino' : 'Próxima parada'}<br />
+            <b className="text-navy-900">
+              {(destino?.label || route.hacia).length > 22
+                ? (destino?.label || route.hacia).slice(0, 22) + '…'
+                : (destino?.label || route.hacia)}
+            </b>
           </span>
         </div>
         <p className="font-display font-extrabold text-2xl text-navy-900 mt-1">Llegada en {etaMin} min</p>

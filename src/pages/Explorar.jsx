@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AppMap from '../components/AppMap';
 import BottomNav from '../components/BottomNav';
@@ -6,8 +7,36 @@ import { useApp } from '../context/AppContext';
 
 export default function Explorar() {
   const navigate = useNavigate();
-  const { userPos, destino } = useApp();
+  const { userPos, setUserPos, destino } = useApp();
+  const [locating, setLocating] = useState(false);
+
+  const locate = useCallback(() => {
+    if (!('geolocation' in navigator)) return;
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setUserPos([pos.coords.latitude, pos.coords.longitude]);
+        setLocating(false);
+      },
+      () => setLocating(false),
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  }, [setUserPos]);
+
+  // Si por alguna razón no se capturó la ubicación en la pantalla de permisos
+  // (p. ej. una sesión ya guardada que saltó ese paso), la pedimos aquí también.
+  useEffect(() => {
+    if (!userPos) locate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const center = userPos || TRUJILLO_CENTER;
+
+  // Cuando hay destino, ajustamos la vista para que se vean tú y el destino a la vez.
+  const bounds = useMemo(() => {
+    if (!destino?.coords) return null;
+    return [center, destino.coords];
+  }, [center, destino]);
 
   return (
     <div className="flex-1 relative">
@@ -30,15 +59,22 @@ export default function Explorar() {
         <AppMap
           center={destino?.coords || center}
           zoom={destino ? 14 : 15}
-          userPos={center}
+          userPos={userPos}
           destPos={destino?.coords}
+          bounds={bounds}
           className="w-full h-full"
         />
       </div>
 
+      {!userPos && (
+        <div className="absolute top-[68px] left-4 right-4 z-20 bg-amber-50 border border-amber-200 text-amber-700 text-xs font-semibold rounded-xl px-3 py-2 text-center">
+          {locating ? 'Obteniendo tu ubicación…' : 'No pudimos obtener tu ubicación. Actívala desde el navegador.'}
+        </div>
+      )}
+
       <button
         onClick={() => navigate('/buscar')}
-        className="absolute top-[68px] left-4 right-4 z-20 bg-white rounded-2xl shadow-card px-4 py-3.5 flex items-center gap-3 text-left"
+        className="absolute top-[112px] left-4 right-4 z-20 bg-white rounded-2xl shadow-card px-4 py-3.5 flex items-center gap-3 text-left"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2" className="w-5 h-5 shrink-0">
           <circle cx="11" cy="11" r="7" />
@@ -58,8 +94,10 @@ export default function Explorar() {
       </div>
 
       <button
-        className="absolute bottom-[104px] right-4 z-20 w-12 h-12 bg-navy-900 rounded-full shadow-card flex items-center justify-center text-white"
+        onClick={locate}
+        className="absolute bottom-[104px] right-4 z-20 w-12 h-12 bg-navy-900 rounded-full shadow-card flex items-center justify-center text-white disabled:opacity-60"
         aria-label="Centrar ubicación"
+        disabled={locating}
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
           <circle cx="12" cy="12" r="3" />

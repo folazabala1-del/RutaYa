@@ -25,7 +25,7 @@ const pinIcon = L.divIcon({
   iconAnchor: [13, 26],
 });
 
-function Recenter({ center }) {
+function FitView({ center, bounds }) {
   const map = useMap();
 
   useEffect(() => {
@@ -38,10 +38,14 @@ function Recenter({ center }) {
   }, [map]);
 
   useEffect(() => {
-    if (center) {
+    if (bounds && bounds.length >= 2) {
+      // Ajusta la vista para que se vean tanto la ubicación del usuario como el destino.
+      map.fitBounds(bounds, { padding: [56, 56], maxZoom: 16 });
+    } else if (center) {
       map.setView(center, map.getZoom(), { animate: true });
     }
-  }, [center, map]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(bounds), center && center[0], center && center[1], map]);
 
   return null;
 }
@@ -54,6 +58,7 @@ export default function AppMap({
   routePath,
   routeColor = '#EE9315',
   busPos,
+  bounds,
   className = '',
   interactive = true,
 }) {
@@ -77,7 +82,7 @@ export default function AppMap({
       {destPos && <Marker position={destPos} icon={pinIcon} />}
       {routePath && <Polyline positions={routePath} pathOptions={{ color: routeColor, weight: 4, dashArray: '1, 10', lineCap: 'round' }} />}
       {busPos && <Marker position={busPos} icon={busIcon(routeColor)} />}
-      <Recenter center={busPos || center} />
+      <FitView center={center} bounds={bounds} />
     </MapContainer>
   );
 }

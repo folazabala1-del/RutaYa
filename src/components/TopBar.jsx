@@ -19,7 +19,10 @@ export default function TopBar({ title, showBack = false, onMenu }) {
           </svg>
         )}
       </button>
-      <h1 className="font-display font-bold text-[15px] text-navy-900">{title}</h1>
+      <h1 className="font-display font-bold text-[15px] text-navy-900 flex items-center gap-1.5">
+        <img src="/logo.png" alt="RutaYa" className="w-6 h-6 rounded object-contain" />
+        {title}
+      </h1>
       <button className="p-1 -mr-1 text-navy-900" aria-label="Perfil">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6">
           <circle cx="12" cy="8" r="3.3" />

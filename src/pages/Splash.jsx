@@ -54,15 +54,8 @@ function BusBadge() {
 
 export function Logo({ className }) {
   return (
-    <div className={`${className} rounded-full border-[3px] border-navy-900 flex items-center justify-center bg-white relative`}>
-      <svg viewBox="0 0 24 24" className="w-2/3 h-2/3" fill="none">
-        <rect x="3" y="9" width="18" height="8" rx="2" fill="#0F1B3D" />
-        <rect x="5" y="10.5" width="4" height="3" rx="0.5" fill="#7FB3E8" />
-        <rect x="10" y="10.5" width="4" height="3" rx="0.5" fill="#7FB3E8" />
-        <circle cx="7" cy="17.5" r="1.4" fill="#0F1B3D" />
-        <circle cx="17" cy="17.5" r="1.4" fill="#0F1B3D" />
-        <path d="M2 18l3-3 3 2 4-3" stroke="#EE9315" strokeWidth="1.4" fill="none" strokeLinecap="round" />
-      </svg>
+    <div className={`${className} rounded-full border-[3px] border-navy-900 overflow-hidden bg-white flex items-center justify-center relative`}>
+      <img src="/logo.png" alt="RutaYa Trujillo" className="w-full h-full object-cover" />
     </div>
   );
 }

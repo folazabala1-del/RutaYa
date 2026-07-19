@@ -21,7 +21,7 @@ const casa = savedPlaces.find((p) => p.id === 'casa');
 
 export default function Explorar() {
   const navigate = useNavigate();
-  const { userPos, setUserPos, locationAccuracy, setLocationAccuracy, destino, setDestino } = useApp();
+  const { userPos, setUserPos, locationAccuracy, setLocationAccuracy, destino, setDestino, streetPaths } = useApp();
   const [locating, setLocating] = useState(false);
 
   const locate = useCallback(() => {
@@ -53,11 +53,11 @@ export default function Explorar() {
     return [center, destino.coords];
   }, [center, destino]);
 
-  // Todos los micros de Trujillo circulando por la ciudad en vivo, igual que en el
-  // mapa de una ruta específica — aquí se ven TODOS a la vez, no solo unos pocos.
+  // Usamos el trazo real por calles (OSRM) apenas está listo; mientras llega (o si
+  // falla), mostramos la curva aproximada para que el mapa nunca se vea vacío.
   const routesWithPath = useMemo(
-    () => allRoutes.map((r) => ({ ...r, visualPath: densifyPath(r.path, r.id) })),
-    []
+    () => allRoutes.map((r) => ({ ...r, visualPath: streetPaths[r.id] || densifyPath(r.path, r.id) })),
+    [streetPaths]
   );
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -69,7 +69,7 @@ export default function Explorar() {
       routesWithPath.map((r, i) => ({
         path: r.visualPath,
         color: r.color,
-        busPos: interpolate(r.visualPath, ((tick * (0.3 + (i % 5) * 0.15) + i * 17) % 100) / 100),
+        busPos: interpolate(r.visualPath, ((tick * (0.09 + (i % 5) * 0.035) + i * 17) % 100) / 100),
       })),
     [routesWithPath, tick]
   );
@@ -87,7 +87,10 @@ export default function Explorar() {
             <path d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
-        <h1 className="font-display font-bold text-[15px] text-navy-900">Transporte Trujillo</h1>
+        <h1 className="font-display font-bold text-[15px] text-navy-900 flex items-center gap-1.5">
+          <img src="/logo.png" alt="RutaYa" className="w-6 h-6 rounded object-contain" />
+          Transporte Trujillo
+        </h1>
         <button className="text-navy-900" onClick={() => navigate('/perfil')}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6">
             <circle cx="12" cy="8" r="3.3" />

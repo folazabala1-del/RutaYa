@@ -18,7 +18,7 @@ function interpolate(path, t) {
 
 export default function MapaEnVivo() {
   const navigate = useNavigate();
-  const { selectedRoute, destino, userPos, setUserPos, setLocationAccuracy } = useApp();
+  const { selectedRoute, destino, userPos, setUserPos, setLocationAccuracy, streetPaths } = useApp();
   const route = selectedRoute || allRoutes[0];
 
   // El tramo "camina hasta el paradero" no es confiable si el GPS del dispositivo dio
@@ -26,9 +26,9 @@ export default function MapaEnVivo() {
   // número absurdo como "camina 42959 m" y en vez de eso avisamos.
   const walkToBoardReliable = typeof route.walkToBoardM === 'number' && route.walkToBoardM < 5000;
 
-  // Suavizamos el trazo (más puntos + un ligero zigzag) para que se vea como una calle
-  // real y no una línea perfectamente recta entre dos paraderos.
-  const visualPath = useMemo(() => densifyPath(route.path, route.id), [route]);
+  // Usamos el trazo real por calles (OSRM) apenas está listo; mientras llega (o si
+  // falla), mostramos la curva aproximada para que el mapa nunca se vea vacío.
+  const visualPath = useMemo(() => streetPaths[route.id] || densifyPath(route.path, route.id), [route, streetPaths]);
 
   // Otros micros de Trujillo circulando de fondo, para que el mapa se sienta vivo
   // con distintas rutas recorriendo la ciudad (no solo la que elegiste). Con 13 rutas
@@ -38,8 +38,8 @@ export default function MapaEnVivo() {
       allRoutes
         .filter((r) => r.id !== route.id)
         .slice(0, 7)
-        .map((r) => ({ ...r, visualPath: densifyPath(r.path, r.id) })),
-    [route]
+        .map((r) => ({ ...r, visualPath: streetPaths[r.id] || densifyPath(r.path, r.id) })),
+    [route, streetPaths]
   );
 
   // Si aún no tenemos tu ubicación real (p. ej. se saltó la pantalla de permisos
@@ -69,13 +69,13 @@ export default function MapaEnVivo() {
 
   // Cada micro (el elegido y los de fondo) recorre su propia ruta completa en loop,
   // cada uno con su propia velocidad y punto de partida para que no se vean sincronizados.
-  const busPos = useMemo(() => interpolate(visualPath, ((tick * 0.6) % 100) / 100), [visualPath, tick]);
+  const busPos = useMemo(() => interpolate(visualPath, ((tick * 0.15) % 100) / 100), [visualPath, tick]);
   const bgBuses = useMemo(
     () =>
       backgroundRoutes.map((r, i) => ({
         path: r.visualPath,
         color: r.color,
-        busPos: interpolate(r.visualPath, ((tick * (0.35 + i * 0.18) + i * 21) % 100) / 100),
+        busPos: interpolate(r.visualPath, ((tick * (0.09 + i * 0.035) + i * 21) % 100) / 100),
       })),
     [backgroundRoutes, tick]
   );
@@ -113,7 +113,10 @@ export default function MapaEnVivo() {
             <path d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
-        <h1 className="font-display font-bold text-[15px] text-navy-900">Transporte Trujillo</h1>
+        <h1 className="font-display font-bold text-[15px] text-navy-900 flex items-center gap-1.5">
+          <img src="/logo.png" alt="RutaYa" className="w-6 h-6 rounded object-contain" />
+          Transporte Trujillo
+        </h1>
         <button className="text-navy-900" onClick={() => navigate('/perfil')}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6">
             <circle cx="12" cy="8" r="3.3" />

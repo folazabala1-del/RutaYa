@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import { savedPlaces as initialSaved, savedRoutes as initialRoutes } from '../data/mock';
+import { savedPlaces as initialSaved, savedRoutes as initialRoutes, routes as allBusRoutes } from '../data/mock';
 import { registerUser, loginUser, createReport, updateProfile as apiUpdateProfile } from '../lib/api';
+import { resolveAllRoutePaths } from '../lib/osrm';
 
 const AppContext = createContext(null);
 const STORAGE_KEY = 'rutaya_session';
@@ -23,6 +24,14 @@ export function AppProvider({ children }) {
     { id: 'n2', title: 'Nueva ruta disponible', body: "Agregamos la ruta 'Nuevo California' cerca de tu zona.", read: false, time: 'Hace 2 h' },
     { id: 'n3', title: 'Tu reporte fue confirmado', body: "Gracias por reportar \"Micro lleno\" en Ruta AG.", read: true, time: 'Ayer' },
   ]);
+
+  const [streetPaths, setStreetPaths] = useState({}); // { routeId: [[lat,lng], ...] } — trazo real por calles
+
+  useEffect(() => {
+    resolveAllRoutePaths(allBusRoutes, (id, path) => {
+      setStreetPaths((prev) => ({ ...prev, [id]: path }));
+    });
+  }, []);
 
   useEffect(() => {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -127,6 +136,7 @@ export function AppProvider({ children }) {
         savedRoutesList, removeSavedRoute,
         placesList,
         reportCount, sendReport,
+        streetPaths,
       }}
     >
       {children}

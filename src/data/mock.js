@@ -8,13 +8,13 @@ export const TRUJILLO_VIEWBOX = '-79.22,-8.02,-78.94,-8.24';
 export const savedPlaces = [
   { id: 'casa', label: 'Casa', address: 'Calle Los Pinos 123', icon: 'home', coords: [-8.1050, -79.0400] },
   { id: 'trabajo', label: 'Trabajo', address: 'Centro Histórico', icon: 'briefcase', coords: [-8.1116, -79.0288] },
-  { id: 'universidad', label: 'Universidad Nacional de Trujillo', address: 'Av. Juan Pablo II, Trujillo', icon: 'cap', coords: [-8.0961, -79.0392] },
+  { id: 'universidad', label: 'Universidad Nacional de Trujillo', address: 'Av. Juan Pablo II, Trujillo', icon: 'cap', coords: [-8.1147, -79.0392] },
   { id: 'mall', label: 'Mallplaza Trujillo', address: 'Av. América Oeste, Trujillo', icon: 'bag', coords: [-8.1260, -79.0400] },
 ];
 
 export const recentPlaces = [
   { id: 'r1', label: 'Plaza de Armas de Trujillo', address: 'Cercado de Trujillo, Trujillo 13001', coords: TRUJILLO_CENTER },
-  { id: 'r2', label: 'Universidad Privada Antenor Orrego', address: 'Av. América Sur 3145, Trujillo', coords: [-8.1180, -79.0330] },
+  { id: 'r2', label: 'Universidad Privada Antenor Orrego', address: 'Av. América Sur 3145, Trujillo', coords: [-8.1270, -79.0314] },
   { id: 'r3', label: 'Mallplaza Trujillo', address: 'Av. América Oeste, Trujillo', coords: [-8.1260, -79.0400] },
 ];
 
@@ -23,8 +23,8 @@ export const recentPlaces = [
 // algo que no está aquí, se completa con geocodificación real (ver src/lib/geocode.js).
 export const trujilloPlaces = [
   { id: 'plaza-armas', label: 'Plaza de Armas de Trujillo', address: 'Cercado de Trujillo', coords: TRUJILLO_CENTER },
-  { id: 'upao', label: 'Universidad Privada Antenor Orrego (UPAO)', address: 'Av. América Sur 3145, Trujillo', coords: [-8.1180, -79.0330] },
-  { id: 'unt', label: 'Universidad Nacional de Trujillo (UNT)', address: 'Av. Juan Pablo II, Trujillo', coords: [-8.0961, -79.0392] },
+  { id: 'upao', label: 'Universidad Privada Antenor Orrego (UPAO)', address: 'Av. América Sur 3145, Trujillo', coords: [-8.1270, -79.0314] },
+  { id: 'unt', label: 'Universidad Nacional de Trujillo (UNT)', address: 'Av. Juan Pablo II, Trujillo', coords: [-8.1147, -79.0392] },
   { id: 'ucv', label: 'Universidad César Vallejo (UCV)', address: 'Av. Larco 1770, Trujillo', coords: [-8.1231, -79.0328] },
   { id: 'mallplaza', label: 'Mallplaza Trujillo', address: 'Av. América Oeste, Trujillo', coords: [-8.1260, -79.0400] },
   { id: 'real-plaza', label: 'Real Plaza Trujillo', address: 'Av. Juan Pablo II 132, Trujillo', coords: [-8.1187, -79.0233] },
@@ -231,7 +231,7 @@ export const routes = [
       [-8.1116, -79.0288],
       [-8.114, -79.031],
       [-8.1165, -79.033],
-      [-8.118, -79.033],
+      [-8.1270, -79.0314],
       [-8.15, -79.01],
       [-8.19, -78.995],
     ],

@@ -1,5 +1,5 @@
 const OSRM_BASE = 'https://router.project-osrm.org/route/v1/driving/';
-const CACHE_KEY = 'rutaya_osrm_cache_v1';
+const CACHE_KEY = 'rutaya_osrm_cache_v2';
 
 function loadCache() {
   try {

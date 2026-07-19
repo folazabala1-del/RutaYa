@@ -26,6 +26,7 @@ export function AppProvider({ children }) {
   ]);
 
   const [streetPaths, setStreetPaths] = useState({}); // { routeId: [[lat,lng], ...] } — trazo real por calles
+  const [isPremium, setIsPremium] = useState(() => localStorage.getItem('rutaya_premium') === '1');
 
   useEffect(() => {
     resolveAllRoutePaths(allBusRoutes, (id, path) => {
@@ -114,6 +115,18 @@ export function AppProvider({ children }) {
     }
   }
 
+  // NOTA: esto es una simulación para el prototipo. No hay pasarela de pago real
+  // conectada (Yape/Plin/tarjeta) — solo marca la cuenta como Premium localmente.
+  function activatePremium() {
+    setIsPremium(true);
+    localStorage.setItem('rutaya_premium', '1');
+  }
+
+  function cancelPremium() {
+    setIsPremium(false);
+    localStorage.removeItem('rutaya_premium');
+  }
+
   function markNotificationRead(id) {
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
   }
@@ -137,6 +150,7 @@ export function AppProvider({ children }) {
         placesList,
         reportCount, sendReport,
         streetPaths,
+        isPremium, activatePremium, cancelPremium,
       }}
     >
       {children}

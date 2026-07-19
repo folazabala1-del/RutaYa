@@ -5,7 +5,7 @@ import { useApp } from '../context/AppContext';
 
 export default function Perfil() {
   const navigate = useNavigate();
-  const { user, logout, reportCount, savedRoutesList, notifications } = useApp();
+  const { user, logout, reportCount, savedRoutesList, notifications, isPremium } = useApp();
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   function handleLogout() {
@@ -58,6 +58,21 @@ export default function Perfil() {
             <p className="text-sm font-semibold text-navy-900">Centro de Ayuda</p>
             <p className="text-xs text-slate-400">Preguntas frecuentes y soporte técnico</p>
           </div>
+        </button>
+
+        <button
+          onClick={() => navigate('/perfil/premium')}
+          className="w-full bg-gradient-to-r from-navy-900 to-[#1B2C5C] rounded-2xl p-4 flex items-center gap-3 text-left mt-3"
+        >
+          <span className="w-9 h-9 rounded-lg bg-amber-400 flex items-center justify-center text-lg">💎</span>
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-white flex items-center gap-2">
+              {isPremium ? 'RutaYa Gold activo' : 'Hazte RutaYa Gold'}
+              {isPremium && <span className="bg-amber-400 text-navy-900 text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">GOLD</span>}
+            </p>
+            <p className="text-xs text-slate-300">{isPremium ? 'Gestiona tu suscripción' : 'Más precisión, sin anuncios, desde S/5.00/mes'}</p>
+          </div>
+          <span className="text-slate-300">›</span>
         </button>
       </div>
 

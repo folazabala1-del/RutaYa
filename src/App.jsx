@@ -15,6 +15,7 @@ import EditarPerfil from './pages/EditarPerfil';
 import Privacidad from './pages/Privacidad';
 import Notificaciones from './pages/Notificaciones';
 import CentroAyuda from './pages/CentroAyuda';
+import Premium from './pages/Premium';
 
 function RequireAuth({ children }) {
   const { user } = useApp();
@@ -40,6 +41,7 @@ function AppRoutes() {
       <Route path="/perfil/privacidad" element={<RequireAuth><Privacidad /></RequireAuth>} />
       <Route path="/perfil/notificaciones" element={<RequireAuth><Notificaciones /></RequireAuth>} />
       <Route path="/perfil/ayuda" element={<RequireAuth><CentroAyuda /></RequireAuth>} />
+      <Route path="/perfil/premium" element={<RequireAuth><Premium /></RequireAuth>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

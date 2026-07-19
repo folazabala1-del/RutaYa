@@ -130,6 +130,7 @@ export default function MapaEnVivo() {
           destPos={destino?.coords}
           destLabel={destino?.label}
           bounds={bounds}
+          uiPadding={{ top: 210, bottom: 230, left: 40, right: 40 }}
           routePath={visualPath}
           routeColor={route.color}
           busPos={busPos}

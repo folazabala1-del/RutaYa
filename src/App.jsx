@@ -11,6 +11,10 @@ import MapaEnVivo from './pages/MapaEnVivo';
 import ReportarIncidencia from './pages/ReportarIncidencia';
 import Guardados from './pages/Guardados';
 import Perfil from './pages/Perfil';
+import EditarPerfil from './pages/EditarPerfil';
+import Privacidad from './pages/Privacidad';
+import Notificaciones from './pages/Notificaciones';
+import CentroAyuda from './pages/CentroAyuda';
 
 function RequireAuth({ children }) {
   const { user } = useApp();
@@ -32,6 +36,10 @@ function AppRoutes() {
       <Route path="/reportar" element={<RequireAuth><ReportarIncidencia /></RequireAuth>} />
       <Route path="/guardados" element={<RequireAuth><Guardados /></RequireAuth>} />
       <Route path="/perfil" element={<RequireAuth><Perfil /></RequireAuth>} />
+      <Route path="/perfil/editar" element={<RequireAuth><EditarPerfil /></RequireAuth>} />
+      <Route path="/perfil/privacidad" element={<RequireAuth><Privacidad /></RequireAuth>} />
+      <Route path="/perfil/notificaciones" element={<RequireAuth><Notificaciones /></RequireAuth>} />
+      <Route path="/perfil/ayuda" element={<RequireAuth><CentroAyuda /></RequireAuth>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

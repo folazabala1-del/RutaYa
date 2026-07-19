@@ -2,6 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { pool } from '../db/database.js';
+import { requireAuth } from '../middleware/auth.js';
 
 export const authRouter = Router();
 
@@ -75,6 +76,36 @@ authRouter.post('/login', async (req, res) => {
   }
 });
 
-authRouter.get('/me', (req, res) => {
-  res.json({ ok: true });
+authRouter.get('/me', requireAuth, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT id, dni, name FROM users WHERE id = $1', [req.userId]);
+    const user = result.rows[0];
+    if (!user) return res.status(404).json({ error: 'Usuario no encontrado.' });
+    res.json({ user });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error del servidor.' });
+  }
+});
+
+authRouter.patch('/me', requireAuth, async (req, res) => {
+  const { name } = req.body;
+
+  if (!name || !name.trim()) {
+    return res.status(400).json({ error: 'El nombre no puede estar vacío.' });
+  }
+
+  try {
+    const updated = await pool.query(
+      'UPDATE users SET name = $1 WHERE id = $2 RETURNING id, dni, name',
+      [name.trim(), req.userId]
+    );
+    if (updated.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuario no encontrado.' });
+    }
+    res.json({ user: updated.rows[0] });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error del servidor al actualizar el perfil.' });
+  }
 });

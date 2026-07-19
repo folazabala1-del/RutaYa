@@ -39,6 +39,14 @@ export function loginUser({ dni, password }) {
   });
 }
 
+export function updateProfile(token, { name }) {
+  return request('/api/auth/me', {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ name }),
+  });
+}
+
 export function createReport(token, { routeCode, incidentType, details }) {
   return request('/api/reports', {
     method: 'POST',

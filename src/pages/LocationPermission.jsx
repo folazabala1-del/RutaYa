@@ -5,22 +5,19 @@ import { useApp } from '../context/AppContext';
 export default function LocationPermission() {
   const [step, setStep] = useState(1);
   const [requesting, setRequesting] = useState(false);
+  const [denied, setDenied] = useState(false);
+  const [showManualHelp, setShowManualHelp] = useState(false);
   const navigate = useNavigate();
   const { setLocationEnabled, setUserPos, setLocationAccuracy } = useApp();
 
-  function handleAllow() {
-    if (step === 1) {
-      setStep(2);
-      return;
-    }
-
+  function requestLocation() {
     if (!('geolocation' in navigator)) {
-      setLocationEnabled(true);
-      navigate('/login');
+      setDenied(true);
       return;
     }
 
     setRequesting(true);
+    setDenied(false);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setUserPos([pos.coords.latitude, pos.coords.longitude]);
@@ -30,14 +27,21 @@ export default function LocationPermission() {
         navigate('/login');
       },
       () => {
-        // El usuario negó el permiso o falló el GPS: seguimos igual, el mapa
-        // usará el centro de Trujillo como respaldo.
-        setLocationEnabled(true);
+        // La ubicación es OBLIGATORIA para usar RutaYa: si el usuario la niega
+        // (o falla), no avanza — se queda en esta pantalla hasta que la conceda.
         setRequesting(false);
-        navigate('/login');
+        setDenied(true);
       },
       { enableHighAccuracy: true, timeout: 8000 }
     );
+  }
+
+  function handleAllow() {
+    if (step === 1) {
+      setStep(2);
+      return;
+    }
+    requestLocation();
   }
 
   return (
@@ -64,7 +68,7 @@ export default function LocationPermission() {
           <div className="mt-4 bg-slate-50 rounded-2xl p-3 flex items-center gap-2 text-xs text-slate-500">
             🛡️ Tus datos están cifrados y solo se usan mientras la app esté activa.
           </div>
-          <button onClick={handleAllow} className="text-center text-xs font-bold text-slate-500 tracking-wide mt-5">
+          <button onClick={() => setShowManualHelp(true)} className="text-center text-xs font-bold text-slate-500 tracking-wide mt-5">
             CONFIGURAR MANUALMENTE
           </button>
         </div>
@@ -86,17 +90,52 @@ export default function LocationPermission() {
               <span>ℹ️</span>
               <span>Esta aplicación requiere acceso preciso al GPS para calcular rutas de transporte en tiempo real y mostrar paraderos cercanos.</span>
             </div>
+
+            {denied && (
+              <div className="bg-red-50 border-l-4 border-red-400 rounded-r-xl p-3 mt-3 text-xs text-red-600 flex gap-2">
+                <span>⚠</span>
+                <span>
+                  La ubicación es obligatoria para usar RutaYa y no pudimos obtenerla. Actívala desde el ícono 🔒 junto a la barra de direcciones de tu navegador y toca "Reintentar".
+                </span>
+              </div>
+            )}
+
             <button
-              onClick={handleAllow}
+              onClick={requestLocation}
               disabled={requesting}
               className="mt-5 w-full bg-navy-900 text-white font-display font-bold py-4 rounded-2xl active:scale-[0.98] transition-transform disabled:opacity-60"
             >
-              {requesting ? 'Obteniendo ubicación…' : 'Activar →'}
+              {requesting ? 'Obteniendo ubicación…' : denied ? 'Reintentar' : 'Activar →'}
             </button>
-            <button onClick={handleAllow} className="w-full border border-slate-200 text-navy-900 font-semibold py-3.5 rounded-2xl mt-2.5">
+            <button onClick={() => setShowManualHelp(true)} className="w-full border border-slate-200 text-navy-900 font-semibold py-3.5 rounded-2xl mt-2.5">
               Abrir configuración
             </button>
             <p className="text-center text-xs text-slate-400 mt-4">¿Por qué es necesario?</p>
+          </div>
+        </div>
+      )}
+
+      {showManualHelp && (
+        <div
+          className="fixed inset-0 z-50 bg-black/40 flex items-end justify-center"
+          onClick={() => setShowManualHelp(false)}
+        >
+          <div className="bg-white w-full max-w-md rounded-t-3xl p-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-display font-bold text-navy-900 mb-2">Activar ubicación manualmente</h3>
+            <p className="text-xs text-slate-500 leading-relaxed mb-3">
+              Por seguridad, una página web no puede abrir los ajustes del navegador por ti. Hazlo así:
+            </p>
+            <ul className="text-xs text-slate-600 space-y-2 list-disc pl-4">
+              <li>Toca el ícono 🔒 (o "ⓘ") junto a la URL, arriba de la pantalla.</li>
+              <li>Busca "Ubicación" y cámbiala a "Permitir".</li>
+              <li>Vuelve aquí y toca "Reintentar".</li>
+            </ul>
+            <button
+              onClick={() => setShowManualHelp(false)}
+              className="mt-4 w-full bg-navy-900 text-white font-semibold py-3 rounded-xl"
+            >
+              Entendido
+            </button>
           </div>
         </div>
       )}

@@ -1,0 +1,886 @@
+diff --git a/backend/src/routes/auth.js b/backend/src/routes/auth.js
+index 30ecc89..10a0049 100644
+--- a/backend/src/routes/auth.js
++++ b/backend/src/routes/auth.js
+@@ -2,6 +2,7 @@ import { Router } from 'express';
+ import bcrypt from 'bcryptjs';
+ import jwt from 'jsonwebtoken';
+ import { pool } from '../db/database.js';
++import { requireAuth } from '../middleware/auth.js';
+ 
+ export const authRouter = Router();
+ 
+@@ -75,6 +76,36 @@ authRouter.post('/login', async (req, res) => {
+   }
+ });
+ 
+-authRouter.get('/me', (req, res) => {
+-  res.json({ ok: true });
++authRouter.get('/me', requireAuth, async (req, res) => {
++  try {
++    const result = await pool.query('SELECT id, dni, name FROM users WHERE id = $1', [req.userId]);
++    const user = result.rows[0];
++    if (!user) return res.status(404).json({ error: 'Usuario no encontrado.' });
++    res.json({ user });
++  } catch (err) {
++    console.error(err);
++    res.status(500).json({ error: 'Error del servidor.' });
++  }
++});
++
++authRouter.patch('/me', requireAuth, async (req, res) => {
++  const { name } = req.body;
++
++  if (!name || !name.trim()) {
++    return res.status(400).json({ error: 'El nombre no puede estar vacío.' });
++  }
++
++  try {
++    const updated = await pool.query(
++      'UPDATE users SET name = $1 WHERE id = $2 RETURNING id, dni, name',
++      [name.trim(), req.userId]
++    );
++    if (updated.rows.length === 0) {
++      return res.status(404).json({ error: 'Usuario no encontrado.' });
++    }
++    res.json({ user: updated.rows[0] });
++  } catch (err) {
++    console.error(err);
++    res.status(500).json({ error: 'Error del servidor al actualizar el perfil.' });
++  }
+ });
+diff --git a/src/App.jsx b/src/App.jsx
+index d35a9f8..d5bf14c 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -11,6 +11,10 @@ import MapaEnVivo from './pages/MapaEnVivo';
+ import ReportarIncidencia from './pages/ReportarIncidencia';
+ import Guardados from './pages/Guardados';
+ import Perfil from './pages/Perfil';
++import EditarPerfil from './pages/EditarPerfil';
++import Privacidad from './pages/Privacidad';
++import Notificaciones from './pages/Notificaciones';
++import CentroAyuda from './pages/CentroAyuda';
+ 
+ function RequireAuth({ children }) {
+   const { user } = useApp();
+@@ -32,6 +36,10 @@ function AppRoutes() {
+       <Route path="/reportar" element={<RequireAuth><ReportarIncidencia /></RequireAuth>} />
+       <Route path="/guardados" element={<RequireAuth><Guardados /></RequireAuth>} />
+       <Route path="/perfil" element={<RequireAuth><Perfil /></RequireAuth>} />
++      <Route path="/perfil/editar" element={<RequireAuth><EditarPerfil /></RequireAuth>} />
++      <Route path="/perfil/privacidad" element={<RequireAuth><Privacidad /></RequireAuth>} />
++      <Route path="/perfil/notificaciones" element={<RequireAuth><Notificaciones /></RequireAuth>} />
++      <Route path="/perfil/ayuda" element={<RequireAuth><CentroAyuda /></RequireAuth>} />
+       <Route path="*" element={<Navigate to="/" replace />} />
+     </Routes>
+   );
+diff --git a/src/components/AppMap.jsx b/src/components/AppMap.jsx
+index 8449a52..dfc0cc7 100644
+--- a/src/components/AppMap.jsx
++++ b/src/components/AppMap.jsx
+@@ -1,4 +1,4 @@
+-import { MapContainer, TileLayer, Marker, Polyline, useMap } from 'react-leaflet';
++import { MapContainer, TileLayer, Marker, Polyline, Tooltip, useMap } from 'react-leaflet';
+ import { useEffect } from 'react';
+ import L from 'leaflet';
+ import { TRUJILLO_CENTER } from '../data/mock';
+@@ -20,9 +20,9 @@ const busIcon = (color = '#EE9315', size = 30) =>
+ 
+ const pinIcon = L.divIcon({
+   className: '',
+-  html: `<div style="width:26px;height:26px;border-radius:50% 50% 50% 0;background:#0F1B3D;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.3)"></div>`,
+-  iconSize: [26, 26],
+-  iconAnchor: [13, 26],
++  html: `<div style="width:32px;height:32px;border-radius:50% 50% 50% 0;background:#0F1B3D;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;box-shadow:0 3px 8px rgba(0,0,0,0.4);border:2px solid white;"><span style="transform:rotate(45deg);font-size:14px;">🏁</span></div>`,
++  iconSize: [32, 32],
++  iconAnchor: [16, 32],
+ });
+ 
+ const stopIcon = (color = '#0F1B3D') =>
+@@ -33,7 +33,7 @@ const stopIcon = (color = '#0F1B3D') =>
+     iconAnchor: [7, 7],
+   });
+ 
+-function FitView({ center, bounds }) {
++function FitView({ center, bounds, uiPadding }) {
+   const map = useMap();
+ 
+   useEffect(() => {
+@@ -47,13 +47,23 @@ function FitView({ center, bounds }) {
+ 
+   useEffect(() => {
+     if (bounds && bounds.length >= 2) {
+-      // Ajusta la vista para que se vean tu ubicación, el destino y los paraderos.
+-      map.fitBounds(bounds, { padding: [56, 56], maxZoom: 16 });
++      // Padding asimétrico: el header, los avisos y la tarjeta inferior son overlays
++      // sólidos que tapan el mapa — sin esto, un marcador podía calcular como "visible"
++      // pero terminar escondido detrás de esa interfaz.
++      const top = uiPadding?.top ?? 60;
++      const bottom = uiPadding?.bottom ?? 60;
++      const left = uiPadding?.left ?? 40;
++      const right = uiPadding?.right ?? 40;
++      map.fitBounds(bounds, {
++        paddingTopLeft: [left, top],
++        paddingBottomRight: [right, bottom],
++        maxZoom: 16,
++      });
+     } else if (center) {
+       map.setView(center, map.getZoom(), { animate: true });
+     }
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+-  }, [JSON.stringify(bounds), center && center[0], center && center[1], map]);
++  }, [JSON.stringify(bounds), center && center[0], center && center[1], map, JSON.stringify(uiPadding)]);
+ 
+   return null;
+ }
+@@ -63,10 +73,12 @@ export default function AppMap({
+   zoom = 15,
+   userPos,
+   destPos,
++  destLabel,
+   routePath,
+   routeColor = '#EE9315',
+   busPos,
+   bounds,
++  uiPadding, // { top, bottom, left, right } — espacio que ocupan header/tarjetas encima del mapa
+   walkLines, // [{ from: [lat,lng], to: [lat,lng] }] — tramos a pie (punteados)
+   stopMarkers, // [{ pos: [lat,lng], color }] — paradero de subida/bajada
+   otherRoutes, // [{ path, color, busPos }] — otros micros circulando de fondo
+@@ -91,10 +103,10 @@ export default function AppMap({
+       />
+ 
+       {otherRoutes?.map((r, i) => (
+-        <Polyline key={`bg-line-${i}`} positions={r.path} pathOptions={{ color: r.color, weight: 3, opacity: 0.35 }} />
++        <Polyline key={`bg-line-${i}`} positions={r.path} pathOptions={{ color: r.color, weight: 4, opacity: 0.55 }} />
+       ))}
+       {otherRoutes?.map((r, i) =>
+-        r.busPos ? <Marker key={`bg-bus-${i}`} position={r.busPos} icon={busIcon(r.color, 22)} /> : null
++        r.busPos ? <Marker key={`bg-bus-${i}`} position={r.busPos} icon={busIcon(r.color, 24)} /> : null
+       )}
+ 
+       {walkLines?.map((w, i) => (
+@@ -106,10 +118,16 @@ export default function AppMap({
+       {stopMarkers?.map((s, i) => <Marker key={`stop-${i}`} position={s.pos} icon={stopIcon(s.color || routeColor)} />)}
+ 
+       {userPos && <Marker position={userPos} icon={userIcon} />}
+-      {destPos && <Marker position={destPos} icon={pinIcon} />}
++      {destPos && (
++        <Marker position={destPos} icon={pinIcon}>
++          <Tooltip permanent direction="top" offset={[0, -30]} className="font-semibold text-[11px]">
++            {destLabel || 'Destino'}
++          </Tooltip>
++        </Marker>
++      )}
+       {busPos && <Marker position={busPos} icon={busIcon(routeColor)} />}
+ 
+-      <FitView center={center} bounds={bounds} />
++      <FitView center={center} bounds={bounds} uiPadding={uiPadding} />
+     </MapContainer>
+   );
+ }
+diff --git a/src/context/AppContext.jsx b/src/context/AppContext.jsx
+index 6efd75c..6c32e87 100644
+--- a/src/context/AppContext.jsx
++++ b/src/context/AppContext.jsx
+@@ -1,6 +1,6 @@
+ import { createContext, useContext, useEffect, useState } from 'react';
+ import { savedPlaces as initialSaved, savedRoutes as initialRoutes } from '../data/mock';
+-import { registerUser, loginUser, createReport } from '../lib/api';
++import { registerUser, loginUser, createReport, updateProfile as apiUpdateProfile } from '../lib/api';
+ 
+ const AppContext = createContext(null);
+ const STORAGE_KEY = 'rutaya_session';
+@@ -17,6 +17,12 @@ export function AppProvider({ children }) {
+   const [savedRoutesList, setSavedRoutesList] = useState(initialRoutes);
+   const [placesList] = useState(initialSaved);
+   const [reportCount, setReportCount] = useState(12);
++  const [profileLoading, setProfileLoading] = useState(false);
++  const [notifications, setNotifications] = useState([
++    { id: 'n1', title: "Micro 'Libertad' reportó tráfico", body: 'Congestión fuerte en Av. América Sur — considera otra ruta.', read: false, time: 'Hace 10 min' },
++    { id: 'n2', title: 'Nueva ruta disponible', body: "Agregamos la ruta 'Nuevo California' cerca de tu zona.", read: false, time: 'Hace 2 h' },
++    { id: 'n3', title: 'Tu reporte fue confirmado', body: "Gracias por reportar \"Micro lleno\" en Ruta AG.", read: true, time: 'Ayer' },
++  ]);
+ 
+   useEffect(() => {
+     const raw = localStorage.getItem(STORAGE_KEY);
+@@ -84,10 +90,35 @@ export function AppProvider({ children }) {
+     setReportCount((c) => c + 1);
+   }
+ 
++  async function updateProfile(name) {
++    setProfileLoading(true);
++    try {
++      const data = await apiUpdateProfile(token, { name });
++      const updatedUser = { ...user, ...data.user };
++      setUser(updatedUser);
++      localStorage.setItem(STORAGE_KEY, JSON.stringify({ user: updatedUser, token }));
++      return { ok: true };
++    } catch (err) {
++      return { ok: false, error: err.message };
++    } finally {
++      setProfileLoading(false);
++    }
++  }
++
++  function markNotificationRead(id) {
++    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
++  }
++
++  function markAllNotificationsRead() {
++    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
++  }
++
+   return (
+     <AppContext.Provider
+       value={{
+         user, token, authLoading, login, register, logout,
++        profileLoading, updateProfile,
++        notifications, markNotificationRead, markAllNotificationsRead,
+         locationEnabled, setLocationEnabled,
+         userPos, setUserPos,
+         locationAccuracy, setLocationAccuracy,
+diff --git a/src/lib/api.js b/src/lib/api.js
+index 683c4d0..7e794ed 100644
+--- a/src/lib/api.js
++++ b/src/lib/api.js
+@@ -39,6 +39,14 @@ export function loginUser({ dni, password }) {
+   });
+ }
+ 
++export function updateProfile(token, { name }) {
++  return request('/api/auth/me', {
++    method: 'PATCH',
++    headers: { Authorization: `Bearer ${token}` },
++    body: JSON.stringify({ name }),
++  });
++}
++
+ export function createReport(token, { routeCode, incidentType, details }) {
+   return request('/api/reports', {
+     method: 'POST',
+diff --git a/src/lib/geo.js b/src/lib/geo.js
+index f759c53..8818f61 100644
+--- a/src/lib/geo.js
++++ b/src/lib/geo.js
+@@ -46,47 +46,40 @@ export function nearestPointOnPath(path, point) {
+   return best;
+ }
+ 
+-function hashSeed(str) {
+-  let h = 0;
+-  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) % 1000003;
+-  return h;
+-}
+-
+-// Suaviza un trazo (path) agregando puntos intermedios con un ligero zigzag lateral,
+-// para que se vea como una calle real en vez de una línea perfectamente recta entre
+-// dos paraderos. Es determinístico (no usa Math.random): la misma ruta siempre se ve
+-// igual entre renders, solo cambia si cambian sus coordenadas originales.
+-export function densifyPath(path, seedKey = '', segmentsPerLeg = 4, jitterKm = 0.05) {
+-  if (!path || path.length < 2) return path;
+-  const seedBase = hashSeed(seedKey);
+-  const out = [path[0]];
++// Suaviza un trazo (path) con una curva tipo Catmull-Rom que pasa exactamente por los
++// mismos puntos originales, pero dibuja el camino entre ellos como una curva natural en
++// vez de segmentos rectos — así se ve como una calle real y no una línea de regla.
++export function densifyPath(path, seedKey = '', pointsPerLeg = 8) {
++  if (!path || path.length < 3) return path;
++  const out = [];
+   for (let i = 0; i < path.length - 1; i++) {
+-    const [lat1, lon1] = path[i];
+-    const [lat2, lon2] = path[i + 1];
+-    const dLat = lat2 - lat1;
+-    const dLon = lon2 - lon1;
+-    const len = Math.hypot(dLat, dLon) || 1;
+-    const perpLat = -dLon / len;
+-    const perpLon = dLat / len;
+-    for (let s = 1; s <= segmentsPerLeg; s++) {
+-      const t = s / (segmentsPerLeg + 1);
+-      const seed = seedBase + i * 97 + s * 13.37;
+-      const rand = seededOffset(seed) * 2 - 1; // -1..1
+-      // El jitter se va a 0 en los extremos de cada tramo (sin(t*pi)) para que
+-      // los puntos originales de la ruta sigan conectando sin saltos.
+-      const jitterDeg = (jitterKm / 110.57) * rand * Math.sin(t * Math.PI);
+-      out.push([lat1 + dLat * t + perpLat * jitterDeg, lon1 + dLon * t + perpLon * jitterDeg]);
++    const p0 = path[i - 1] || path[i];
++    const p1 = path[i];
++    const p2 = path[i + 1];
++    const p3 = path[i + 2] || p2;
++    for (let s = 0; s < pointsPerLeg; s++) {
++      const t = s / pointsPerLeg;
++      const t2 = t * t;
++      const t3 = t2 * t;
++      const lat =
++        0.5 *
++        (2 * p1[0] +
++          (-p0[0] + p2[0]) * t +
++          (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 +
++          (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3);
++      const lon =
++        0.5 *
++        (2 * p1[1] +
++          (-p0[1] + p2[1]) * t +
++          (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 +
++          (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3);
++      out.push([lat, lon]);
+     }
+-    out.push(path[i + 1]);
+   }
++  out.push(path[path.length - 1]);
+   return out;
+ }
+ 
+-function seededOffset(seed) {
+-  const x = Math.sin(seed * 12.9898) * 43758.5453;
+-  return x - Math.floor(x);
+-}
+-
+ // Dado un destino [lat, lng] y la lista de rutas (con .endpoint y .destinations),
+ // devuelve las rutas ordenadas de más a menos relevantes para llegar a ese destino.
+ // Prioriza coincidencia de texto (p.ej. el usuario buscó "Huanchaco" y la ruta va a Huanchaco)
+diff --git a/src/pages/CentroAyuda.jsx b/src/pages/CentroAyuda.jsx
+new file mode 100644
+index 0000000..eb0473c
+--- /dev/null
++++ b/src/pages/CentroAyuda.jsx
+@@ -0,0 +1,62 @@
++import { useState } from 'react';
++import TopBar from '../components/TopBar';
++
++const faqs = [
++  {
++    q: '¿Cómo elijo un destino?',
++    a: 'Toca "¿A dónde vas hoy?" en la pantalla principal, escribe el nombre del lugar o distrito, y elige un resultado. También puedes tocar "Trabajo" o "Casa" para ir directo a esos lugares guardados.',
++  },
++  {
++    q: '¿Por qué no aparece mi ubicación en el mapa?',
++    a: 'Tu navegador necesita permiso de ubicación. Revisa el ícono de candado 🔒 junto a la barra de direcciones y activa la ubicación para este sitio. En laptops sin GPS, la ubicación puede ser imprecisa.',
++  },
++  {
++    q: '¿Cómo reporto una incidencia?',
++    a: 'Desde el mapa de una ruta, toca "Reportar incidencia" y elige el tipo (tráfico, desvío, micro lleno, etc). Tu reporte ayuda a otros usuarios de esa ruta.',
++  },
++  {
++    q: '¿Los reportes son anónimos?',
++    a: 'Sí. Otros usuarios solo ven la ruta y el tipo de incidente, nunca quién lo reportó.',
++  },
++];
++
++export default function CentroAyuda() {
++  const [openIndex, setOpenIndex] = useState(null);
++
++  return (
++    <div className="screen bg-slate-50">
++      <TopBar title="Centro de Ayuda" showBack />
++
++      <div className="px-4 pt-4">
++        <h2 className="font-display font-bold text-navy-900 text-sm mb-2">Preguntas frecuentes</h2>
++        <div className="bg-white rounded-2xl shadow-card divide-y divide-slate-100 overflow-hidden mb-4">
++          {faqs.map((f, i) => (
++            <div key={f.q}>
++              <button
++                onClick={() => setOpenIndex(openIndex === i ? null : i)}
++                className="w-full flex items-center justify-between px-4 py-3.5 text-left"
++              >
++                <span className="text-sm font-semibold text-navy-900 pr-3">{f.q}</span>
++                <span className="text-slate-300 shrink-0">{openIndex === i ? '−' : '+'}</span>
++              </button>
++              {openIndex === i && (
++                <p className="px-4 pb-3.5 text-xs text-slate-500 leading-relaxed">{f.a}</p>
++              )}
++            </div>
++          ))}
++        </div>
++
++        <div className="bg-white rounded-2xl shadow-card p-4">
++          <h3 className="font-display font-bold text-navy-900 text-sm mb-1">¿No encontraste tu respuesta?</h3>
++          <p className="text-xs text-slate-500 mb-3">Escríbenos y te ayudamos.</p>
++          <a
++            href="mailto:soporte@rutaya.pe"
++            className="block w-full bg-navy-900 text-white text-center font-semibold text-sm py-3 rounded-xl"
++          >
++            ✉ Contactar soporte
++          </a>
++        </div>
++      </div>
++    </div>
++  );
++}
+diff --git a/src/pages/EditarPerfil.jsx b/src/pages/EditarPerfil.jsx
+new file mode 100644
+index 0000000..4bda8be
+--- /dev/null
++++ b/src/pages/EditarPerfil.jsx
+@@ -0,0 +1,71 @@
++import { useState } from 'react';
++import { useNavigate } from 'react-router-dom';
++import TopBar from '../components/TopBar';
++import { useApp } from '../context/AppContext';
++
++export default function EditarPerfil() {
++  const navigate = useNavigate();
++  const { user, updateProfile, profileLoading } = useApp();
++  const [name, setName] = useState(user?.name || '');
++  const [error, setError] = useState('');
++  const [saved, setSaved] = useState(false);
++
++  async function handleSave(e) {
++    e.preventDefault();
++    setError('');
++    setSaved(false);
++    if (!name.trim()) {
++      setError('El nombre no puede estar vacío.');
++      return;
++    }
++    const res = await updateProfile(name);
++    if (res.ok) {
++      setSaved(true);
++      setTimeout(() => navigate('/perfil'), 800);
++    } else {
++      setError(res.error || 'No se pudo guardar. Intenta de nuevo.');
++    }
++  }
++
++  return (
++    <div className="screen bg-slate-50">
++      <TopBar title="Editar perfil" showBack />
++
++      <form onSubmit={handleSave} className="px-4 pt-5 flex flex-col gap-4">
++        <div className="flex flex-col items-center py-4">
++          <div className="w-20 h-20 rounded-full bg-white border-4 border-white shadow flex items-center justify-center text-3xl">
++            🧑
++          </div>
++        </div>
++
++        <div>
++          <label className="text-xs font-semibold text-slate-500 mb-1 block">Nombre</label>
++          <input
++            value={name}
++            onChange={(e) => setName(e.target.value)}
++            className="w-full bg-white rounded-xl shadow-card px-4 py-3.5 text-sm font-semibold text-navy-900 outline-none"
++            placeholder="Tu nombre"
++          />
++        </div>
++
++        <div>
++          <label className="text-xs font-semibold text-slate-500 mb-1 block">DNI</label>
++          <div className="w-full bg-slate-100 rounded-xl px-4 py-3.5 text-sm font-semibold text-slate-400">
++            {user?.dni || '—'} <span className="font-normal text-[11px]">(no editable)</span>
++          </div>
++        </div>
++
++        {error && <p className="text-xs text-red-500 font-semibold text-center">{error}</p>}
++        {saved && <p className="text-xs text-emerald-600 font-semibold text-center">✓ Guardado</p>}
++
++        <button
++          type="submit"
++          disabled={profileLoading}
++          className="mt-2 w-full bg-navy-900 text-white font-display font-bold py-4 rounded-2xl active:scale-[0.98] transition-transform disabled:opacity-60"
++        >
++          {profileLoading ? 'Guardando…' : 'Guardar cambios'}
++        </button>
++      </form>
++    </div>
++  );
++}
+diff --git a/src/pages/Explorar.jsx b/src/pages/Explorar.jsx
+index 48706fa..34b82dc 100644
+--- a/src/pages/Explorar.jsx
++++ b/src/pages/Explorar.jsx
+@@ -2,12 +2,26 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
+ import { useNavigate } from 'react-router-dom';
+ import AppMap from '../components/AppMap';
+ import BottomNav from '../components/BottomNav';
+-import { TRUJILLO_CENTER } from '../data/mock';
++import { TRUJILLO_CENTER, routes as allRoutes, savedPlaces } from '../data/mock';
++import { densifyPath } from '../lib/geo';
+ import { useApp } from '../context/AppContext';
+ 
++function interpolate(path, t) {
++  const segs = path.length - 1;
++  const pos = t * segs;
++  const i = Math.min(Math.floor(pos), segs - 1);
++  const localT = pos - i;
++  const [lat1, lng1] = path[i];
++  const [lat2, lng2] = path[i + 1];
++  return [lat1 + (lat2 - lat1) * localT, lng1 + (lng2 - lng1) * localT];
++}
++
++const trabajo = savedPlaces.find((p) => p.id === 'trabajo');
++const casa = savedPlaces.find((p) => p.id === 'casa');
++
+ export default function Explorar() {
+   const navigate = useNavigate();
+-  const { userPos, setUserPos, locationAccuracy, setLocationAccuracy, destino } = useApp();
++  const { userPos, setUserPos, locationAccuracy, setLocationAccuracy, destino, setDestino } = useApp();
+   const [locating, setLocating] = useState(false);
+ 
+   const locate = useCallback(() => {
+@@ -39,6 +53,32 @@ export default function Explorar() {
+     return [center, destino.coords];
+   }, [center, destino]);
+ 
++  // Todos los micros de Trujillo circulando por la ciudad en vivo, igual que en el
++  // mapa de una ruta específica — aquí se ven TODOS a la vez, no solo unos pocos.
++  const routesWithPath = useMemo(
++    () => allRoutes.map((r) => ({ ...r, visualPath: densifyPath(r.path, r.id) })),
++    []
++  );
++  const [tick, setTick] = useState(0);
++  useEffect(() => {
++    const interval = setInterval(() => setTick((t) => t + 1), 450);
++    return () => clearInterval(interval);
++  }, []);
++  const liveBuses = useMemo(
++    () =>
++      routesWithPath.map((r, i) => ({
++        path: r.visualPath,
++        color: r.color,
++        busPos: interpolate(r.visualPath, ((tick * (0.3 + (i % 5) * 0.15) + i * 17) % 100) / 100),
++      })),
++    [routesWithPath, tick]
++  );
++
++  function goTo(place) {
++    setDestino(place);
++    navigate('/rutas');
++  }
++
+   return (
+     <div className="flex-1 relative">
+       <header className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-4 h-14 bg-white/95 backdrop-blur border-b border-slate-100">
+@@ -62,7 +102,10 @@ export default function Explorar() {
+           zoom={destino ? 14 : 15}
+           userPos={userPos}
+           destPos={destino?.coords}
++          destLabel={destino?.label}
+           bounds={bounds}
++          uiPadding={{ top: 190, bottom: 170, left: 40, right: 40 }}
++          otherRoutes={liveBuses}
+           className="w-full h-full"
+         />
+       </div>
+@@ -86,7 +129,9 @@ export default function Explorar() {
+           <circle cx="11" cy="11" r="7" />
+           <path d="M21 21l-4.3-4.3" />
+         </svg>
+-        <span className="text-slate-400 text-sm flex-1">¿A dónde vas hoy?</span>
++        <span className="text-slate-400 text-sm flex-1">
++          {destino ? `Destino: ${destino.label}` : '¿A dónde vas hoy?'}
++        </span>
+         <svg viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2" className="w-5 h-5 shrink-0">
+           <rect x="4" y="6" width="16" height="14" rx="2" />
+           <path d="M9 2v6M15 2v6" />
+@@ -94,8 +139,8 @@ export default function Explorar() {
+       </button>
+ 
+       <div className="absolute bottom-24 left-4 right-4 z-20 flex gap-2">
+-        <QuickChip icon="💼" label="Trabajo" onClick={() => navigate('/buscar')} />
+-        <QuickChip icon="🏠" label="Casa" onClick={() => navigate('/buscar')} />
++        <QuickChip icon="💼" label="Trabajo" onClick={() => goTo(trabajo)} />
++        <QuickChip icon="🏠" label="Casa" onClick={() => goTo(casa)} />
+         <QuickChip icon="🕐" label="Recientes" onClick={() => navigate('/buscar')} />
+       </div>
+ 
+diff --git a/src/pages/LocationPermission.jsx b/src/pages/LocationPermission.jsx
+index 92ec9b5..6f376bc 100644
+--- a/src/pages/LocationPermission.jsx
++++ b/src/pages/LocationPermission.jsx
+@@ -5,22 +5,19 @@ import { useApp } from '../context/AppContext';
+ export default function LocationPermission() {
+   const [step, setStep] = useState(1);
+   const [requesting, setRequesting] = useState(false);
++  const [denied, setDenied] = useState(false);
++  const [showManualHelp, setShowManualHelp] = useState(false);
+   const navigate = useNavigate();
+   const { setLocationEnabled, setUserPos, setLocationAccuracy } = useApp();
+ 
+-  function handleAllow() {
+-    if (step === 1) {
+-      setStep(2);
+-      return;
+-    }
+-
++  function requestLocation() {
+     if (!('geolocation' in navigator)) {
+-      setLocationEnabled(true);
+-      navigate('/login');
++      setDenied(true);
+       return;
+     }
+ 
+     setRequesting(true);
++    setDenied(false);
+     navigator.geolocation.getCurrentPosition(
+       (pos) => {
+         setUserPos([pos.coords.latitude, pos.coords.longitude]);
+@@ -30,16 +27,23 @@ export default function LocationPermission() {
+         navigate('/login');
+       },
+       () => {
+-        // El usuario negó el permiso o falló el GPS: seguimos igual, el mapa
+-        // usará el centro de Trujillo como respaldo.
+-        setLocationEnabled(true);
++        // La ubicación es OBLIGATORIA para usar RutaYa: si el usuario la niega
++        // (o falla), no avanza — se queda en esta pantalla hasta que la conceda.
+         setRequesting(false);
+-        navigate('/login');
++        setDenied(true);
+       },
+       { enableHighAccuracy: true, timeout: 8000 }
+     );
+   }
+ 
++  function handleAllow() {
++    if (step === 1) {
++      setStep(2);
++      return;
++    }
++    requestLocation();
++  }
++
+   return (
+     <div className="flex-1 flex flex-col bg-white">
+       {step === 1 ? (
+@@ -64,7 +68,7 @@ export default function LocationPermission() {
+           <div className="mt-4 bg-slate-50 rounded-2xl p-3 flex items-center gap-2 text-xs text-slate-500">
+             🛡️ Tus datos están cifrados y solo se usan mientras la app esté activa.
+           </div>
+-          <button onClick={handleAllow} className="text-center text-xs font-bold text-slate-500 tracking-wide mt-5">
++          <button onClick={() => setShowManualHelp(true)} className="text-center text-xs font-bold text-slate-500 tracking-wide mt-5">
+             CONFIGURAR MANUALMENTE
+           </button>
+         </div>
+@@ -86,20 +90,55 @@ export default function LocationPermission() {
+               <span>ℹ️</span>
+               <span>Esta aplicación requiere acceso preciso al GPS para calcular rutas de transporte en tiempo real y mostrar paraderos cercanos.</span>
+             </div>
++
++            {denied && (
++              <div className="bg-red-50 border-l-4 border-red-400 rounded-r-xl p-3 mt-3 text-xs text-red-600 flex gap-2">
++                <span>⚠</span>
++                <span>
++                  La ubicación es obligatoria para usar RutaYa y no pudimos obtenerla. Actívala desde el ícono 🔒 junto a la barra de direcciones de tu navegador y toca "Reintentar".
++                </span>
++              </div>
++            )}
++
+             <button
+-              onClick={handleAllow}
++              onClick={requestLocation}
+               disabled={requesting}
+               className="mt-5 w-full bg-navy-900 text-white font-display font-bold py-4 rounded-2xl active:scale-[0.98] transition-transform disabled:opacity-60"
+             >
+-              {requesting ? 'Obteniendo ubicación…' : 'Activar →'}
++              {requesting ? 'Obteniendo ubicación…' : denied ? 'Reintentar' : 'Activar →'}
+             </button>
+-            <button onClick={handleAllow} className="w-full border border-slate-200 text-navy-900 font-semibold py-3.5 rounded-2xl mt-2.5">
++            <button onClick={() => setShowManualHelp(true)} className="w-full border border-slate-200 text-navy-900 font-semibold py-3.5 rounded-2xl mt-2.5">
+               Abrir configuración
+             </button>
+             <p className="text-center text-xs text-slate-400 mt-4">¿Por qué es necesario?</p>
+           </div>
+         </div>
+       )}
++
++      {showManualHelp && (
++        <div
++          className="fixed inset-0 z-50 bg-black/40 flex items-end justify-center"
++          onClick={() => setShowManualHelp(false)}
++        >
++          <div className="bg-white w-full max-w-md rounded-t-3xl p-6" onClick={(e) => e.stopPropagation()}>
++            <h3 className="font-display font-bold text-navy-900 mb-2">Activar ubicación manualmente</h3>
++            <p className="text-xs text-slate-500 leading-relaxed mb-3">
++              Por seguridad, una página web no puede abrir los ajustes del navegador por ti. Hazlo así:
++            </p>
++            <ul className="text-xs text-slate-600 space-y-2 list-disc pl-4">
++              <li>Toca el ícono 🔒 (o "ⓘ") junto a la URL, arriba de la pantalla.</li>
++              <li>Busca "Ubicación" y cámbiala a "Permitir".</li>
++              <li>Vuelve aquí y toca "Reintentar".</li>
++            </ul>
++            <button
++              onClick={() => setShowManualHelp(false)}
++              className="mt-4 w-full bg-navy-900 text-white font-semibold py-3 rounded-xl"
++            >
++              Entendido
++            </button>
++          </div>
++        </div>
++      )}
+     </div>
+   );
+ }
+diff --git a/src/pages/MapaEnVivo.jsx b/src/pages/MapaEnVivo.jsx
+index ba0c903..8a2f6fa 100644
+--- a/src/pages/MapaEnVivo.jsx
++++ b/src/pages/MapaEnVivo.jsx
+@@ -128,7 +128,9 @@ export default function MapaEnVivo() {
+           zoom={14}
+           userPos={userPos}
+           destPos={destino?.coords}
++          destLabel={destino?.label}
+           bounds={bounds}
++          uiPadding={{ top: 210, bottom: 230, left: 40, right: 40 }}
+           routePath={visualPath}
+           routeColor={route.color}
+           busPos={busPos}
+diff --git a/src/pages/Notificaciones.jsx b/src/pages/Notificaciones.jsx
+new file mode 100644
+index 0000000..b56ae93
+--- /dev/null
++++ b/src/pages/Notificaciones.jsx
+@@ -0,0 +1,42 @@
++import TopBar from '../components/TopBar';
++import { useApp } from '../context/AppContext';
++
++export default function Notificaciones() {
++  const { notifications, markNotificationRead, markAllNotificationsRead } = useApp();
++  const unreadCount = notifications.filter((n) => !n.read).length;
++
++  return (
++    <div className="screen bg-slate-50">
++      <TopBar title="Notificaciones" showBack />
++
++      <div className="px-4 pt-4">
++        {unreadCount > 0 && (
++          <button onClick={markAllNotificationsRead} className="text-xs font-semibold text-amber-600 mb-3">
++            Marcar todas como leídas
++          </button>
++        )}
++
++        <div className="flex flex-col gap-2">
++          {notifications.map((n) => (
++            <button
++              key={n.id}
++              onClick={() => markNotificationRead(n.id)}
++              className={`w-full text-left bg-white rounded-2xl shadow-card p-4 flex gap-3 items-start ${n.read ? 'opacity-60' : ''}`}
++            >
++              {!n.read && <span className="w-2 h-2 rounded-full bg-amber-400 mt-1.5 shrink-0" />}
++              <div className={n.read ? '' : 'flex-1'}>
++                <p className="text-sm font-semibold text-navy-900">{n.title}</p>
++                <p className="text-xs text-slate-500 mt-0.5">{n.body}</p>
++                <p className="text-[10px] text-slate-400 mt-1">{n.time}</p>
++              </div>
++            </button>
++          ))}
++
++          {notifications.length === 0 && (
++            <p className="text-sm text-slate-400 text-center mt-10">No tienes notificaciones.</p>
++          )}
++        </div>
++      </div>
++    </div>
++  );
++}
+diff --git a/src/pages/Perfil.jsx b/src/pages/Perfil.jsx
+index ec2c6a8..589ed0d 100644
+--- a/src/pages/Perfil.jsx
++++ b/src/pages/Perfil.jsx
+@@ -5,7 +5,8 @@ import { useApp } from '../context/AppContext';
+ 
+ export default function Perfil() {
+   const navigate = useNavigate();
+-  const { user, logout, reportCount, savedRoutesList } = useApp();
++  const { user, logout, reportCount, savedRoutesList, notifications } = useApp();
++  const unreadCount = notifications.filter((n) => !n.read).length;
+ 
+   function handleLogout() {
+     logout();
+@@ -18,10 +19,10 @@ export default function Perfil() {
+ 
+       <div className="px-4 pt-4">
+         <div className="bg-gradient-to-br from-[#DCEBFA] via-[#EDE3F5] to-[#FBE9D6] rounded-3xl p-5 flex flex-col items-center text-center">
+-          <div className="w-20 h-20 rounded-full bg-white border-4 border-white shadow flex items-center justify-center text-3xl relative">
++          <button onClick={() => navigate('/perfil/editar')} className="w-20 h-20 rounded-full bg-white border-4 border-white shadow flex items-center justify-center text-3xl relative">
+             🧑
+             <span className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-amber-400 flex items-center justify-center text-xs">✎</span>
+-          </div>
++          </button>
+           <h2 className="font-display font-extrabold text-lg text-navy-900 mt-3">{user?.name || 'Usuario RutaYa'}</h2>
+           <p className="text-xs text-slate-500 mt-0.5">DNI: {user?.dni || '74218903'}</p>
+           <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">📍 Trujillo, Perú</p>
+@@ -41,9 +42,9 @@ export default function Perfil() {
+         </div>
+ 
+         <div className="bg-white rounded-2xl shadow-card mt-4 divide-y divide-slate-100 overflow-hidden">
+-          <MenuRow icon="✎" label="Editar perfil" />
+-          <MenuRow icon="🔒" label="Privacidad" />
+-          <MenuRow icon="🔔" label="Notificaciones" badge={3} />
++          <MenuRow icon="✎" label="Editar perfil" onClick={() => navigate('/perfil/editar')} />
++          <MenuRow icon="🔒" label="Privacidad" onClick={() => navigate('/perfil/privacidad')} />
++          <MenuRow icon="🔔" label="Notificaciones" badge={unreadCount || null} onClick={() => navigate('/perfil/notificaciones')} />
+           <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3.5 text-left text-red-500 font-semibold text-sm">
+             <span className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center">⎋</span>
+             Cerrar sesión
+@@ -51,13 +52,13 @@ export default function Perfil() {
+         </div>
+ 
+         <p className="text-[11px] font-bold text-slate-400 mt-5 mb-2 tracking-wide">SOPORTE Y AYUDA</p>
+-        <div className="bg-white rounded-2xl shadow-card p-4 flex items-center gap-3">
++        <button onClick={() => navigate('/perfil/ayuda')} className="w-full bg-white rounded-2xl shadow-card p-4 flex items-center gap-3 text-left">
+           <span className="w-9 h-9 rounded-lg bg-slate-50 flex items-center justify-center">❓</span>
+           <div>
+             <p className="text-sm font-semibold text-navy-900">Centro de Ayuda</p>
+             <p className="text-xs text-slate-400">Preguntas frecuentes y soporte técnico</p>
+           </div>
+-        </div>
++        </button>
+       </div>
+ 
+       <BottomNav />
+@@ -65,9 +66,9 @@ export default function Perfil() {
+   );
+ }
+ 
+-function MenuRow({ icon, label, badge }) {
++function MenuRow({ icon, label, badge, onClick }) {
+   return (
+-    <button className="w-full flex items-center gap-3 px-4 py-3.5 text-left">
++    <button onClick={onClick} className="w-full flex items-center gap-3 px-4 py-3.5 text-left">
+       <span className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-navy-900">{icon}</span>
+       <span className="flex-1 text-sm font-semibold text-navy-900">{label}</span>
+       {badge && <span className="bg-amber-400 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center">{badge}</span>}
+diff --git a/src/pages/Privacidad.jsx b/src/pages/Privacidad.jsx
+new file mode 100644
+index 0000000..cc64dd4
+--- /dev/null
++++ b/src/pages/Privacidad.jsx
+@@ -0,0 +1,37 @@
++import TopBar from '../components/TopBar';
++
++const sections = [
++  {
++    title: 'Qué datos guardamos',
++    body: 'Tu DNI y nombre para identificar tu cuenta, y los reportes de incidencias que envías (ruta, tipo de incidente y detalles). Tu contraseña nunca se guarda en texto plano: se guarda cifrada.',
++  },
++  {
++    title: 'Tu ubicación',
++    body: 'Usamos el GPS de tu navegador solo mientras usas la app, para mostrarte tu posición en el mapa y calcular a qué paradero caminar. No guardamos un historial de tus ubicaciones.',
++  },
++  {
++    title: 'Con quién compartimos datos',
++    body: 'No vendemos ni compartimos tus datos con terceros. Los reportes de incidencias son anónimos para otros usuarios: solo se muestra la ruta y el tipo de incidente, no quién lo reportó.',
++  },
++  {
++    title: 'Eliminar tu cuenta',
++    body: 'Si quieres eliminar tu cuenta y tus datos, escríbenos desde el Centro de Ayuda y lo procesamos en un plazo de 48 horas.',
++  },
++];
++
++export default function Privacidad() {
++  return (
++    <div className="screen bg-slate-50">
++      <TopBar title="Privacidad" showBack />
++
++      <div className="px-4 pt-4 flex flex-col gap-3">
++        {sections.map((s) => (
++          <div key={s.title} className="bg-white rounded-2xl shadow-card p-4">
++            <h3 className="font-display font-bold text-navy-900 text-sm mb-1">{s.title}</h3>
++            <p className="text-xs text-slate-500 leading-relaxed">{s.body}</p>
++          </div>
++        ))}
++      </div>
++    </div>
++  );
++}

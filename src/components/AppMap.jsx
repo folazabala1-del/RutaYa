@@ -33,7 +33,7 @@ const stopIcon = (color = '#0F1B3D') =>
     iconAnchor: [7, 7],
   });
 
-function FitView({ center, bounds }) {
+function FitView({ center, bounds, uiPadding }) {
   const map = useMap();
 
   useEffect(() => {
@@ -47,13 +47,23 @@ function FitView({ center, bounds }) {
 
   useEffect(() => {
     if (bounds && bounds.length >= 2) {
-      // Ajusta la vista para que se vean tu ubicación, el destino y los paraderos.
-      map.fitBounds(bounds, { padding: [56, 56], maxZoom: 16 });
+      // Padding asimétrico: el header, los avisos y la tarjeta inferior son overlays
+      // sólidos que tapan el mapa — sin esto, un marcador podía calcular como "visible"
+      // pero terminar escondido detrás de esa interfaz.
+      const top = uiPadding?.top ?? 60;
+      const bottom = uiPadding?.bottom ?? 60;
+      const left = uiPadding?.left ?? 40;
+      const right = uiPadding?.right ?? 40;
+      map.fitBounds(bounds, {
+        paddingTopLeft: [left, top],
+        paddingBottomRight: [right, bottom],
+        maxZoom: 16,
+      });
     } else if (center) {
       map.setView(center, map.getZoom(), { animate: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(bounds), center && center[0], center && center[1], map]);
+  }, [JSON.stringify(bounds), center && center[0], center && center[1], map, JSON.stringify(uiPadding)]);
 
   return null;
 }
@@ -68,6 +78,7 @@ export default function AppMap({
   routeColor = '#EE9315',
   busPos,
   bounds,
+  uiPadding, // { top, bottom, left, right } — espacio que ocupan header/tarjetas encima del mapa
   walkLines, // [{ from: [lat,lng], to: [lat,lng] }] — tramos a pie (punteados)
   stopMarkers, // [{ pos: [lat,lng], color }] — paradero de subida/bajada
   otherRoutes, // [{ path, color, busPos }] — otros micros circulando de fondo
@@ -92,10 +103,10 @@ export default function AppMap({
       />
 
       {otherRoutes?.map((r, i) => (
-        <Polyline key={`bg-line-${i}`} positions={r.path} pathOptions={{ color: r.color, weight: 3, opacity: 0.35 }} />
+        <Polyline key={`bg-line-${i}`} positions={r.path} pathOptions={{ color: r.color, weight: 4, opacity: 0.55 }} />
       ))}
       {otherRoutes?.map((r, i) =>
-        r.busPos ? <Marker key={`bg-bus-${i}`} position={r.busPos} icon={busIcon(r.color, 22)} /> : null
+        r.busPos ? <Marker key={`bg-bus-${i}`} position={r.busPos} icon={busIcon(r.color, 24)} /> : null
       )}
 
       {walkLines?.map((w, i) => (
@@ -116,7 +127,7 @@ export default function AppMap({
       )}
       {busPos && <Marker position={busPos} icon={busIcon(routeColor)} />}
 
-      <FitView center={center} bounds={bounds} />
+      <FitView center={center} bounds={bounds} uiPadding={uiPadding} />
     </MapContainer>
   );
 }

@@ -104,6 +104,7 @@ export default function Explorar() {
           destPos={destino?.coords}
           destLabel={destino?.label}
           bounds={bounds}
+          uiPadding={{ top: 190, bottom: 170, left: 40, right: 40 }}
           otherRoutes={liveBuses}
           className="w-full h-full"
         />

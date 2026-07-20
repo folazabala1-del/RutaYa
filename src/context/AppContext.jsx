@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { savedPlaces as initialSaved, savedRoutes as initialRoutes, routes as allBusRoutes } from '../data/mock';
-import { registerUser, loginUser, createReport, updateProfile as apiUpdateProfile } from '../lib/api';
+import { registerUser, loginUser, createReport, getMyReports, updateProfile as apiUpdateProfile } from '../lib/api';
 import { resolveAllRoutePaths } from '../lib/osrm';
 
 const AppContext = createContext(null);
@@ -48,6 +48,15 @@ export function AppProvider({ children }) {
     }
   }, []);
 
+  useEffect(() => {
+    if (!token) return;
+    getMyReports(token)
+      .then((data) => setReportCount(data.count))
+      .catch(() => {
+        // Si falla (backend caído, sin red), dejamos el contador local tal cual.
+      });
+  }, [token]);
+
   function persistSession(sessionUser, sessionToken) {
     setUser(sessionUser);
     setToken(sessionToken);
@@ -88,6 +97,27 @@ export function AppProvider({ children }) {
 
   function removeSavedRoute(id) {
     setSavedRoutesList((prev) => prev.filter((r) => r.id !== id));
+  }
+
+  function addSavedRoute(route, destinoLabel) {
+    const alreadySaved = savedRoutesList.some((r) => r.routeId === route.id && r.destinoLabel === destinoLabel);
+    if (alreadySaved) return { ok: false, error: 'Ya guardaste esta ruta.' };
+    const entry = {
+      id: `saved-${Date.now()}`,
+      routeId: route.id,
+      destinoLabel,
+      badge: route.code,
+      title: destinoLabel ? `${route.name.replace(/^Micro |^Combi /, '')} → ${destinoLabel}` : route.hacia,
+      avgTime: route.time,
+      live: route.live,
+      savedLabel: 'GUARDADO AHORA',
+    };
+    setSavedRoutesList((prev) => [entry, ...prev]);
+    return { ok: true };
+  }
+
+  function isRouteSaved(route, destinoLabel) {
+    return savedRoutesList.some((r) => r.routeId === route.id && r.destinoLabel === destinoLabel);
   }
 
   // Los lugares de ejemplo (Casa, Trabajo, etc.) no cuentan contra el límite — solo
@@ -165,7 +195,7 @@ export function AppProvider({ children }) {
         locationAccuracy, setLocationAccuracy,
         destino, setDestino,
         selectedRoute, setSelectedRoute,
-        savedRoutesList, removeSavedRoute,
+        savedRoutesList, removeSavedRoute, addSavedRoute, isRouteSaved,
         placesList, addPlace, removePlace, canAddPlace, addedPlacesCount, FREE_PLACE_LIMIT,
         reportCount, sendReport,
         streetPaths,

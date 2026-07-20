@@ -8,6 +8,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [error, setError] = useState('');
+  const [showForgot, setShowForgot] = useState(false);
   const navigate = useNavigate();
   const { login, register, authLoading } = useApp();
 
@@ -102,7 +103,13 @@ export default function Login() {
           {error && <p className="text-xs text-red-500 -mt-1">{error}</p>}
 
           {tab === 'login' && (
-            <p className="text-right text-xs font-semibold text-amber-500 -mt-2">¿Olvidó su contraseña?</p>
+            <button
+              type="button"
+              onClick={() => setShowForgot(true)}
+              className="text-right text-xs font-semibold text-amber-500 -mt-2"
+            >
+              ¿Olvidó su contraseña?
+            </button>
           )}
 
           <button
@@ -132,6 +139,27 @@ export default function Login() {
       <p className="text-center text-xs text-slate-400 mt-6">
         Al continuar, aceptas nuestros <span className="text-navy-900 font-semibold">Términos de Servicio</span> y <span className="text-navy-900 font-semibold">Privacidad</span>.
       </p>
+
+      {showForgot && (
+        <div className="fixed inset-0 bg-black/40 z-30 flex items-end" onClick={() => setShowForgot(false)}>
+          <div className="bg-white w-full rounded-t-3xl p-6 text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="w-14 h-14 rounded-full bg-amber-100 flex items-center justify-center text-2xl mx-auto mb-3">🔑</div>
+            <h3 className="font-display font-bold text-navy-900 mb-1">Recuperar contraseña</h3>
+            <p className="text-sm text-slate-500 mb-5">
+              Por ahora no tenemos recuperación automática por correo. Escríbenos con tu DNI y te ayudamos a restablecerla manualmente.
+            </p>
+            <a
+              href="mailto:soporte@rutaya.pe?subject=Recuperar%20contraseña"
+              className="block w-full bg-navy-900 text-white font-display font-bold py-3.5 rounded-2xl mb-2"
+            >
+              ✉ Escribir a soporte
+            </a>
+            <button onClick={() => setShowForgot(false)} className="w-full text-slate-400 text-sm font-semibold py-2">
+              Cerrar
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

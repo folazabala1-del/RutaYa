@@ -8,7 +8,7 @@ import { useApp } from '../context/AppContext';
 
 export default function Rutas() {
   const navigate = useNavigate();
-  const { destino, userPos, setSelectedRoute } = useApp();
+  const { destino, userPos, setSelectedRoute, addSavedRoute, isRouteSaved } = useApp();
 
   // Si hay un destino real, ordenamos las rutas por cuál conviene más y calculamos,
   // para cada una, dos tramos a pie: de tu ubicación al paradero más cercano de esa
@@ -35,6 +35,10 @@ export default function Rutas() {
   function verMapa(route) {
     setSelectedRoute(route);
     navigate('/mapa-en-vivo');
+  }
+
+  function guardar(route) {
+    addSavedRoute(route, destino?.label);
   }
 
   return (
@@ -97,8 +101,15 @@ export default function Rutas() {
             </div>
 
             <div className="flex gap-2 mt-3">
-              <button onClick={() => verMapa(r)} className="flex-1 bg-navy-900 text-white text-sm font-semibold py-2.5 rounded-xl">Ver detalle</button>
-              <button onClick={() => verMapa(r)} className="flex-1 border border-slate-200 text-navy-900 text-sm font-semibold py-2.5 rounded-xl">Ver mapa</button>
+              <button onClick={() => verMapa(r)} className="flex-1 bg-navy-900 text-white text-sm font-semibold py-2.5 rounded-xl">Ver mapa</button>
+              <button
+                onClick={() => guardar(r)}
+                disabled={isRouteSaved(r, destino?.label)}
+                className="w-11 border border-slate-200 text-navy-900 text-sm font-semibold py-2.5 rounded-xl flex items-center justify-center disabled:text-amber-500 disabled:border-amber-300"
+                aria-label="Guardar ruta"
+              >
+                {isRouteSaved(r, destino?.label) ? '✓' : '🔖'}
+              </button>
             </div>
           </div>
         ))}

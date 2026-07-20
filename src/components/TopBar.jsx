@@ -23,7 +23,7 @@ export default function TopBar({ title, showBack = false, onMenu }) {
         <img src="/logo.png" alt="RutaYa" className="w-6 h-6 rounded object-contain" />
         {title}
       </h1>
-      <button className="p-1 -mr-1 text-navy-900" aria-label="Perfil">
+      <button onClick={() => navigate('/perfil')} className="p-1 -mr-1 text-navy-900" aria-label="Perfil">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6">
           <circle cx="12" cy="8" r="3.3" />
           <path d="M5 20c1.4-3.7 4.7-5 7-5s5.6 1.3 7 5" />

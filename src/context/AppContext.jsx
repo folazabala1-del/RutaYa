@@ -16,7 +16,8 @@ export function AppProvider({ children }) {
   const [destino, setDestino] = useState(null);
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [savedRoutesList, setSavedRoutesList] = useState(initialRoutes);
-  const [placesList] = useState(initialSaved);
+  const [placesList, setPlacesList] = useState(initialSaved);
+  const FREE_PLACE_LIMIT = 1;
   const [reportCount, setReportCount] = useState(12);
   const [profileLoading, setProfileLoading] = useState(false);
   const [notifications, setNotifications] = useState([
@@ -89,6 +90,24 @@ export function AppProvider({ children }) {
     setSavedRoutesList((prev) => prev.filter((r) => r.id !== id));
   }
 
+  // Los lugares de ejemplo (Casa, Trabajo, etc.) no cuentan contra el límite — solo
+  // los que el usuario agrega él mismo desde "+ Agregar" en Guardados.
+  const addedPlacesCount = placesList.filter((p) => p.custom).length;
+  const canAddPlace = isPremium || addedPlacesCount < FREE_PLACE_LIMIT;
+
+  function addPlace(place) {
+    if (!canAddPlace) {
+      return { ok: false, error: 'Alcanzaste el límite de lugares favoritos del plan gratis.' };
+    }
+    const newPlace = { ...place, id: `custom-${Date.now()}`, icon: 'pin', custom: true };
+    setPlacesList((prev) => [...prev, newPlace]);
+    return { ok: true };
+  }
+
+  function removePlace(id) {
+    setPlacesList((prev) => prev.filter((p) => p.id !== id));
+  }
+
   async function sendReport({ routeCode, incidentType, details }) {
     if (token) {
       try {
@@ -147,7 +166,7 @@ export function AppProvider({ children }) {
         destino, setDestino,
         selectedRoute, setSelectedRoute,
         savedRoutesList, removeSavedRoute,
-        placesList,
+        placesList, addPlace, removePlace, canAddPlace, addedPlacesCount, FREE_PLACE_LIMIT,
         reportCount, sendReport,
         streetPaths,
         isPremium, activatePremium, cancelPremium,
